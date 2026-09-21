@@ -7,6 +7,31 @@ Hunting Blade 是基于 `ctf-agent` 的二开版本。在同一道题交给多�
 3. `--all-solved-policy` 默认值是 `wait`，所以全题解完后会继续等待新题，不会自动退出。
 4. 默认 `--no-submit`；只有显式传入 `--submit` 才允许向平台提交候选 Flag。
 
+## 开发阶段与完成情况
+
+> 状态截止 2026-09-21，当前开发分支为 `feat/cpa-go-routing`。阶段验收只记录真实执行过的结果；离线 fake transport 测试不等同于真实 Provider 调用。
+
+| 阶段 | 状态 | 已完成 | 尚未完成 / 验收边界 |
+|------|------|----------|------------------------|
+| M0：上游审计与基线 | **已完成** | 锁定 HuntingBlade 上游 SHA `f4cae4d0ed897ccf3645742dc719b3755ba1ae83`；确认可复用 Coordinator、Solver、Swarm、Sandbox、Policy Engine 和 Working Memory；保留上游许可证与架构 | 无；后续阶段继续在现有 Agent 运行时上增量开发 |
+| M0.5：Docker 沙箱基线 | **已完成** | Windows x64 上的原生 `linux/amd64` 构建/生命周期验收已通过；Apple Silicon 上的 `linux/arm64` 完整构建、关键工具 smoke 和真实 `DockerSandbox` 测试已通过 | ARM64 不代表可原生调试 x86-64 Pwn/Reverse；该类题仍需原生 `linux/amd64` worker |
+| M1：Provider Registry 与 Doctor | **已完成** | 显式 Provider/协议注册、精确模型 ID、脱敏离线 `ctf-doctor`、错误分类、配置验证和 fake transport 回归已完成 | Doctor 默认不请求 `/models`；真实模型发现和端点验收归入 M2/M3 |
+| M2：CPA 模型接入 | **代码/离线协议完成** | `cpa-responses` 与 `cpa-chat` adapter、Solver 接线、工具调用多轮回归、并发/预算/熔断和默认禁止付费 fallback 已完成 | 当前未配置 CPA endpoint/Key；真实 `/models`、GPT/Gemini 工具调用和从题面到候选 Flag 的 Docker 闭环尚未验收 |
+| M3：OpenCode Go 接入与额度治理 | **代码/离线协议完成** | `go-responses`、`go-chat`、`go-messages` 三协议 adapter；每 Solver 稳定独立 session；token usage、软/硬预算、429/配额熔断和候选 Flag/平台确认分离已完成 | 当前未配置 OpenCode Go Key；真实模型目录、订阅额度、至少一个模型的 CTF 工具闭环尚未验收 |
+| M4：资源、安全与跨平台 worker | **未开始（部分前置已完成）** | Provider 共享并发、日志/轨迹脱敏、amd64/arm64 镜像基线已具备 | 容器全生命周期资源治理、权限收紧、出站策略、远程 worker 附件同步与故障恢复待实现 |
+| M5：题目管理、Triage 与动态调度 | **未开始** | 现有 Poller、Coordinator、Swarm、Policy Engine 和 Working Memory 作为复用基础 | 跨题队列、Fast/Expert/Racing 规则、额度感知调度、持久化与中断恢复待实现；不会根据模型名硬编码分工 |
+| M6：历史 CTF Benchmark | **未开始** | 已确定用真实历史题比较模型家族和 Racing 边际收益 | 题集、限时、成本、Time-to-Flag 和互补覆盖率报告待建立；尚未冻结 Fast/Expert 模型分工 |
+| M7：四小时模拟赛与配置冻结 | **未开始** | 已确定默认不自动提交，候选 Flag 与平台确认分离 | 比赛规则确认、四小时长跑、429/断网/Docker 退出/额度耗尽故障注入及最终镜像/模型 ID 冻结待完成 |
+
+当前验证基线：
+
+- CPython 3.14.7 / macOS arm64：`232 passed, 3 skipped, 1 warning`；两个 Provider 真实 smoke 和一个 Docker 集成测试默认为 opt-in。
+- `RUN_DOCKER_INTEGRATION=1` + `ctf-sandbox:arm64`：真实 `DockerSandbox` 挂载、执行、取消与清理测试 `1 passed`。
+- `ruff check backend tests` 和 `git diff --check` 通过。
+- 真实 CPA/OpenCode Go 验收必须显式设置 `RUN_PROVIDER_LIVE=1`；当前没有也不会伪造成功结果。
+
+更详细的阶段出口、实测证据和已知风险见 [实施路线图](docs/IMPLEMENTATION_ROADMAP.md)、[架构审计](docs/ARCHITECTURE_AUDIT.md)、[Provider 协议证据](docs/PROVIDER_PROTOCOLS.md) 与 [开发记录](docs/CHANGELOG_DEV.md)。
+
 ## 主要命令
 
 | 命令 | 用途 |
