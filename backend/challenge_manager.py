@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -226,3 +226,4 @@ class ChallengeManager:
         candidates = [c for c in self.challenges.values() if c.status is ChallengeStatus.TRIAGED]
         candidates.sort(key=lambda c: c.priority, reverse=True)
         return candidates[:available_slots]
+

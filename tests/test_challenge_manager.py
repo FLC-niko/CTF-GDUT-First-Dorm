@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
-from backend.challenge_manager import ChallengeManager, ChallengeStatus
+import pytest
+
+from backend.challenge_manager import ChallengeEntry, ChallengeManager, ChallengeStatus
 from backend.persistence import StatePersistence
 from backend.prompts import ChallengeMeta
 from backend.triage import TriageReport
@@ -89,3 +92,4 @@ def test_challenge_manager_lifecycle_and_recovery(tmp_path: Path) -> None:
     assert restored.status is ChallengeStatus.CONFIRMED
     assert restored.confirmed_flag == "flag{candidate_test}"
     assert restored.tier == "racing"
+

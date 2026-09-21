@@ -114,3 +114,4 @@ def test_benchmark_runner_and_report_generation(tmp_path: Path) -> None:
     json_data = json.loads(json_file.read_text(encoding="utf-8"))
     assert "summary" in json_data
     assert json_data["marginal_racing_coverage"] > 0
+

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from backend.challenge_manager import ChallengeEntry
+from pathlib import Path
+
+import pytest
+
+from backend.challenge_manager import ChallengeEntry, ChallengeStatus
 from backend.prompts import ChallengeMeta
 from backend.scheduler import TieredModelConfig, TieredScheduler
 from backend.triage import ChallengeTriager
@@ -60,3 +64,4 @@ def test_tiered_scheduler_dispatch() -> None:
     assert "cpa-responses/gemini-2.5-pro" in selected
     assert "go-messages/deepseek-r1" in selected
     assert scheduler.get_timeout_s(entry) == 1200
+

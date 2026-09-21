@@ -80,3 +80,4 @@ async def test_simulated_competition_hours(tmp_path: Path) -> None:
     assert report.faults_injected >= 2
     assert report.faults_recovered == report.faults_injected
     assert report.resilience_rate == 1.0
+

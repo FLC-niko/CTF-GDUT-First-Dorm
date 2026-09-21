@@ -7,10 +7,10 @@ past attempts, token budgets, and concurrency constraints.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-from backend.challenge_manager import ChallengeEntry
+from backend.challenge_manager import ChallengeEntry, ChallengeStatus
 from backend.models import DEFAULT_MODELS
 
 logger = logging.getLogger(__name__)
@@ -83,3 +83,4 @@ class TieredScheduler:
         if entry.tier == "expert":
             return self.config.expert_timeout_s
         return self.config.racing_timeout_s
+

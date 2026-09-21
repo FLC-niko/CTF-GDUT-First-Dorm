@@ -248,6 +248,7 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
         ctfd=deps.ctfd,
         cost_tracker=deps.cost_tracker,
         settings=deps.settings,
+        model_specs=deps.model_specs,
         model_specs=models_to_run,
         no_submit=deps.no_submit,
         coordinator_inbox=deps.coordinator_inbox,

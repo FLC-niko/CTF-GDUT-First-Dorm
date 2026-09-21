@@ -11,11 +11,15 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
+from typing import Any
 
 from backend.challenge_manager import ChallengeManager, ChallengeStatus
 from backend.persistence import StatePersistence
+from backend.prompts import ChallengeMeta
 from backend.sandbox import (
     acquire_lifecycle_lease,
+    configure_semaphore,
     release_lifecycle_lease,
 )
 
@@ -158,3 +162,4 @@ class CompetitionSimulator:
             faults_recovered=faults_recovered,
             events=self.events,
         )
+

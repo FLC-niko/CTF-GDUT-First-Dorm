@@ -72,3 +72,4 @@ uv run ctf-solve --coordinator none --max-challenges 3 --max-containers 4
 | **VM 103 远程 Worker 临时断网** | 系统会将任务退回到待调度队列；可临时指定本地 Docker 模拟运行，或重启网络后继续。 |
 | **进程意外终止 / 机器断电** | 直接重新执行启动命令；`StatePersistence` 会自动从 `competition_state.json` 恢复所有题目进度，**不会重复解题或覆盖附件**。 |
 | **容器内存暴涨或僵尸进程** | 执行 `docker rm -f $(docker ps -aq --filter label=ctf-agent=true)` 即可彻底清理全部沙箱容器。 |
+

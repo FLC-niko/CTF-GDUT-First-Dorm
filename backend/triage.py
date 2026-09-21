@@ -8,7 +8,8 @@ Deterministic heuristics act as a robust fallback.
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any, Literal
 
 from backend.prompts import ChallengeMeta
@@ -141,3 +142,4 @@ class ChallengeTriager:
         # When a triage model is configured, an LLM call could be performed;
         # otherwise (and for determinism), heuristic triage provides reliable baseline.
         return self.heuristic_triage(meta, distfile_names)
+

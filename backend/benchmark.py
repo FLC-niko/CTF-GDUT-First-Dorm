@@ -14,6 +14,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from backend.prompts import ChallengeMeta
+
 logger = logging.getLogger(__name__)
 
 
@@ -166,3 +168,4 @@ class BenchmarkRunner:
         md_path.write_text(result.to_markdown(), encoding="utf-8")
         logger.info("Saved benchmark report to %s and %s", json_path, md_path)
         return md_path
+
