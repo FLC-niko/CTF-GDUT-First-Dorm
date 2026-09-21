@@ -21,7 +21,7 @@ from backend.platforms.base import CompetitionPlatformClient
 from backend.platforms.factory import create_platform_client
 from backend.poller import CompetitionPoller
 from backend.prompts import ChallengeMeta
-from backend.solver_base import FLAG_FOUND
+from backend.solver_base import FLAG_CANDIDATE, FLAG_FOUND
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ def _effective_solved_names(deps: CoordinatorDeps, known_solved: set[str]) -> se
         effective |= {
             name
             for name, record in deps.results.items()
-            if record.get("solve_status") == FLAG_FOUND
+            if record.get("solve_status") in {FLAG_FOUND, FLAG_CANDIDATE}
         }
     return effective
 

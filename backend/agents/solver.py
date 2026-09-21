@@ -5,8 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
+from uuid import uuid4
 
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.messages import ModelRequest, UserPromptPart
@@ -33,11 +36,39 @@ from backend.models import (
 )
 from backend.output_types import FlagFound
 from backend.prompts import ChallengeMeta, build_prompt, list_distfiles
+from backend.provider_runtime import (
+    ProviderCircuitOpenError,
+    ProviderErrorKind,
+    ProviderRuntimeGovernor,
+    classify_provider_error,
+)
+from backend.providers import get_provider_spec
 from backend.sandbox import DockerSandbox
-from backend.solver_base import CANCELLED, CORRECT_MARKERS, ERROR, FLAG_FOUND, GAVE_UP, SolverResult
+from backend.solver_base import (
+    CANCELLED,
+    CORRECT_MARKERS,
+    ERROR,
+    FLAG_CANDIDATE,
+    FLAG_FOUND,
+    GAVE_UP,
+    QUOTA_ERROR,
+    SolverResult,
+)
 from backend.tracing import SolverTracer
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _provider_slot(
+    runtime: ProviderRuntimeGovernor | None,
+    provider: str,
+) -> AsyncIterator[None]:
+    if runtime is None:
+        yield
+        return
+    async with runtime.slot(provider):
+        yield
 
 
 @dataclass
@@ -118,6 +149,7 @@ class Solver:
         cancel_event: asyncio.Event | None = None,
         sandbox: DockerSandbox | None = None,
         owns_sandbox: bool | None = None,
+        provider_runtime: ProviderRuntimeGovernor | None = None,
     ) -> None:
         self.model_spec = model_spec
         self.model_id = model_id_from_spec(model_spec)
@@ -127,6 +159,8 @@ class Solver:
         self.cost_tracker = cost_tracker
         self.settings = settings
         self.cancel_event = cancel_event or asyncio.Event()
+        self.provider_runtime = provider_runtime
+        self.provider_session_id = str(uuid4())
         self._owns_sandbox = owns_sandbox if owns_sandbox is not None else (sandbox is None)
 
         self.sandbox = sandbox or DockerSandbox(
@@ -177,7 +211,11 @@ class Solver:
             resolved_capabilities=resolved_capabilities,
         )
 
-        model = resolve_model(self.model_spec, self.settings)
+        model = resolve_model(
+            self.model_spec,
+            self.settings,
+            session_id=self.provider_session_id,
+        )
         model_settings = resolve_model_settings(self.model_spec)
         raw_toolset = _build_toolset(resolved_capabilities)
         toolset = TracingToolset(
@@ -213,28 +251,31 @@ class Solver:
             prompt = "Solve this CTF challenge." if not self._messages else "Continue solving."
             usage_limits = UsageLimits(request_limit=None)
 
-            if provider_from_spec(self.model_spec) == "azure":
-                async with self._agent.run_stream(
-                    prompt,
-                    deps=self.deps,
-                    message_history=self._messages if self._messages else None,
-                    usage_limits=usage_limits,
-                ) as result:
-                    output = await result.get_output()
-                    usage = result.usage()
+            provider = provider_from_spec(self.model_spec)
+            provider_spec = get_provider_spec(provider)
+            async with _provider_slot(self.provider_runtime, provider):
+                if provider_spec.solver_streaming:
+                    async with self._agent.run_stream(
+                        prompt,
+                        deps=self.deps,
+                        message_history=self._messages if self._messages else None,
+                        usage_limits=usage_limits,
+                    ) as result:
+                        output = await result.get_output()
+                        usage = result.usage
+                        all_messages = result.all_messages()
+                        new_messages = result.new_messages()
+                else:
+                    result = await self._agent.run(
+                        prompt,
+                        deps=self.deps,
+                        message_history=self._messages if self._messages else None,
+                        usage_limits=usage_limits,
+                    )
+                    output = result.output
+                    usage = result.usage
                     all_messages = result.all_messages()
                     new_messages = result.new_messages()
-            else:
-                result = await self._agent.run(
-                    prompt,
-                    deps=self.deps,
-                    message_history=self._messages if self._messages else None,
-                    usage_limits=usage_limits,
-                )
-                output = result.output
-                usage = result.usage()
-                all_messages = result.all_messages()
-                new_messages = result.new_messages()
 
             duration = time.monotonic() - t0
 
@@ -243,6 +284,8 @@ class Solver:
                 provider_spec=provider_from_spec(self.model_spec),
                 duration_seconds=duration,
             )
+            if self.provider_runtime is not None:
+                self.provider_runtime.record_usage(provider, usage)
 
             agent_usage = self.cost_tracker.by_agent.get(self.agent_name)
             self.tracer.usage(
@@ -268,10 +311,7 @@ class Solver:
 
             if isinstance(output, FlagFound):
                 self._flag = output.flag
-                self._findings = f"Flag found via {output.method}: {output.flag}"
-                # In dry-run mode, structured output is sufficient (can't verify via CTFd)
-                if self.deps.no_submit:
-                    self._confirmed = True
+                self._findings = f"Unconfirmed flag candidate found via {output.method}"
             # CTFd confirmation always counts (the primary path when not in dry-run)
             if self.deps.confirmed_flag:
                 self._confirmed = True
@@ -279,14 +319,30 @@ class Solver:
 
             if self._confirmed and self._flag:
                 return self._result(FLAG_FOUND)
+            if self._flag:
+                return self._result(FLAG_CANDIDATE)
             return self._result(GAVE_UP)
 
         except asyncio.CancelledError:
             return self._result(CANCELLED)
+        except ProviderCircuitOpenError as e:
+            self._findings = f"Provider unavailable ({e.reason})"
+            self.tracer.event("provider_error", category=e.reason)
+            return self._result(QUOTA_ERROR)
         except Exception as e:
-            logger.error(f"[{self.agent_name}] Error: {e}", exc_info=True)
-            self._findings = f"Error: {e}"
-            self.tracer.event("error", error=str(e))
+            kind = classify_provider_error(e)
+            if self.provider_runtime is not None:
+                self.provider_runtime.record_error(provider_from_spec(self.model_spec), kind)
+            logger.error(
+                "[%s] Provider error (%s; %s)",
+                self.agent_name,
+                kind.value,
+                type(e).__name__,
+            )
+            self._findings = f"Provider error ({kind.value})"
+            self.tracer.event("provider_error", category=kind.value)
+            if kind in {ProviderErrorKind.QUOTA, ProviderErrorKind.RATE_LIMIT}:
+                return self._result(QUOTA_ERROR)
             return self._result(ERROR)
 
     def bump(self, insights: str) -> None:

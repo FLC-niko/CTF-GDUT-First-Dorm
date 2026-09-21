@@ -81,7 +81,7 @@ def _status_from_result(record: dict[str, Any] | None) -> str | None:
         return "cancelled"
     if solve_status in {"error", "quota_error"}:
         return "error"
-    if solve_status in {"flag_found", "gave_up", "no_result", "skipped"}:
+    if solve_status in {"flag_found", "flag_candidate", "gave_up", "no_result", "skipped"}:
         return "finished"
     return None
 

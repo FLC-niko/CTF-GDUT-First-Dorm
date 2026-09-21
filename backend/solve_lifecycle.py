@@ -7,7 +7,7 @@ from typing import Any, Literal, TypedDict
 
 from backend.deps import CoordinatorDeps, ReleasedEnvKey
 from backend.prompts import ChallengeMeta
-from backend.solver_base import FLAG_FOUND, SolverResult
+from backend.solver_base import FLAG_CANDIDATE, FLAG_FOUND, SolverResult
 
 WriteupMode = Literal["off", "confirmed", "solved"]
 
@@ -64,7 +64,7 @@ def should_generate_writeup(mode: WriteupMode, record: ChallengeResultRecord) ->
     if mode == "confirmed":
         return bool(record["confirmed"])
     if mode == "solved":
-        return record["solve_status"] == FLAG_FOUND
+        return record["solve_status"] in {FLAG_FOUND, FLAG_CANDIDATE}
     return False
 
 

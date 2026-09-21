@@ -14,9 +14,11 @@ from backend.ctfd import CTFdClient
 from backend.message_bus import ChallengeMessageBus
 from backend.models import DEFAULT_MODELS, provider_from_spec
 from backend.prompts import ChallengeMeta
+from backend.provider_runtime import ProviderRuntimeGovernor
 from backend.solver_base import (
     CANCELLED,
     ERROR,
+    FLAG_CANDIDATE,
     FLAG_FOUND,
     GAVE_UP,
     QUOTA_ERROR,
@@ -30,7 +32,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# Quota fallback: map subscription-backed providers to API-backed equivalents
+# Optional paid fallback map. It is disabled unless explicitly enabled in settings.
 QUOTA_FALLBACK: dict[str, str] = {
     "claude-sdk/claude-opus-4-6": "bedrock/us.anthropic.claude-opus-4-6-v1",
     "codex/gpt-5.4": "azure/gpt-5.4",
@@ -39,7 +41,9 @@ QUOTA_FALLBACK: dict[str, str] = {
 }
 
 
-def _quota_fallback_spec(model_spec: str) -> str | None:
+def _quota_fallback_spec(model_spec: str, *, allow_paid: bool = False) -> str | None:
+    if not allow_paid:
+        return None
     return QUOTA_FALLBACK.get(model_spec)
 
 
@@ -62,6 +66,7 @@ class ChallengeSwarm:
     model_specs: list[str] = field(default_factory=lambda: list(DEFAULT_MODELS))
     no_submit: bool = False
     coordinator_inbox: asyncio.Queue | None = None
+    provider_runtime: ProviderRuntimeGovernor | None = None
 
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
     solvers: dict[str, SolverProtocol] = field(default_factory=dict)
@@ -76,6 +81,10 @@ class ChallengeSwarm:
     _submitted_flags: set[str] = field(default_factory=set)  # dedup exact flags
     _last_submit_time: dict[str, float] = field(default_factory=dict)  # per-model last submit timestamp
     message_bus: ChallengeMessageBus = field(default_factory=ChallengeMessageBus)
+
+    def __post_init__(self) -> None:
+        if self.provider_runtime is None:
+            self.provider_runtime = ProviderRuntimeGovernor.from_settings(self.settings)
 
     def _create_solver(self, model_spec: str):
         """Create the right solver type based on provider.
@@ -144,6 +153,7 @@ class ChallengeSwarm:
             cancel_event=self.cancel_event,
             sandbox=sandbox,
             owns_sandbox=owns_sandbox,
+            provider_runtime=self.provider_runtime,
         )
         solver.deps.message_bus = self.message_bus
         solver.deps.model_spec = model_spec
@@ -220,7 +230,12 @@ class ChallengeSwarm:
             solver = final_solver
             return result
         except Exception as e:
-            logger.error(f"[{self.meta.name}/{model_spec}] Fatal: {e}", exc_info=True)
+            logger.error(
+                "[%s/%s] Fatal solver error (%s)",
+                self.meta.name,
+                model_spec,
+                type(e).__name__,
+            )
             return None
         finally:
             await solver.stop()
@@ -246,11 +261,16 @@ class ChallengeSwarm:
                 self.findings[model_spec] = result.findings_summary
                 await self.message_bus.post(model_spec, result.findings_summary[:500])
 
-            if result.status == FLAG_FOUND:
+            if result.status == FLAG_FOUND or (
+                result.status == FLAG_CANDIDATE and self.no_submit
+            ):
                 self.cancel_event.set()
                 self.winner = result
                 logger.info(
-                    f"[{self.meta.name}] Flag found by {model_spec}: {result.flag}"
+                    "[%s] %s by %s",
+                    self.meta.name,
+                    "flag confirmed" if result.status == FLAG_FOUND else "flag candidate found",
+                    model_spec,
                 )
                 return result, solver
 
@@ -259,7 +279,10 @@ class ChallengeSwarm:
 
             # Quota exhaustion: fall back to API-backed Pydantic AI solver
             if result.status == QUOTA_ERROR:
-                fallback_spec = _quota_fallback_spec(model_spec)
+                fallback_spec = _quota_fallback_spec(
+                    model_spec,
+                    allow_paid=self.settings.allow_paid_api_fallback,
+                )
                 if fallback_spec:
                     logger.warning(
                         f"[{self.meta.name}/{model_spec}] Quota exhausted — falling back to {fallback_spec}"
@@ -275,7 +298,7 @@ class ChallengeSwarm:
                 # No fallback available, treat as error
                 break
 
-            if result.status in (GAVE_UP, ERROR):
+            if result.status in (FLAG_CANDIDATE, GAVE_UP, ERROR):
                 if result.step_count == 0 and result.cost_usd == 0:
                     logger.warning(
                         f"[{self.meta.name}/{model_spec}] Broken (0 steps, $0) — not bumping"
@@ -328,7 +351,12 @@ class ChallengeSwarm:
                         result = task.result()
                     except Exception:
                         continue
-                    if result and result.status == FLAG_FOUND:
+                    candidate_is_terminal = (
+                        result is not None
+                        and result.status == FLAG_CANDIDATE
+                        and self.no_submit
+                    )
+                    if result and (result.status == FLAG_FOUND or candidate_is_terminal):
                         self.cancel_event.set()
                         for p in pending:
                             p.cancel()
@@ -340,7 +368,9 @@ class ChallengeSwarm:
             self.cancel_event.set()
             return self.winner
         except Exception as e:
-            logger.error(f"[{self.meta.name}] Swarm error: {e}", exc_info=True)
+            logger.error(
+                "[%s] Swarm error (%s)", self.meta.name, type(e).__name__
+            )
             self.cancel_event.set()
             for t in tasks:
                 t.cancel()

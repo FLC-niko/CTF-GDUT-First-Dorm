@@ -5,7 +5,7 @@ from pathlib import Path
 
 from backend.prompts import ChallengeMeta
 from backend.solve_lifecycle import build_result_record, should_generate_writeup
-from backend.solver_base import FLAG_FOUND, GAVE_UP, SolverResult
+from backend.solver_base import FLAG_CANDIDATE, FLAG_FOUND, GAVE_UP, SolverResult
 from backend.writeups import extract_recent_key_steps, run_dir_name, write_writeup
 
 
@@ -66,11 +66,20 @@ def test_should_generate_writeup_follows_mode_and_result_state() -> None:
         "env_cleanup_error": "",
     }
     unsolved_record = dict(solved_record, solve_status=GAVE_UP, confirmed=False)
+    candidate_record = dict(
+        solved_record,
+        solve_status=FLAG_CANDIDATE,
+        submit_status="",
+        submit_display="",
+        confirmed=False,
+    )
 
     assert should_generate_writeup("off", solved_record) is False
     assert should_generate_writeup("confirmed", solved_record) is True
     assert should_generate_writeup("confirmed", unsolved_record) is False
+    assert should_generate_writeup("confirmed", candidate_record) is False
     assert should_generate_writeup("solved", solved_record) is True
+    assert should_generate_writeup("solved", candidate_record) is True
     assert should_generate_writeup("solved", unsolved_record) is False
 
 

@@ -14,6 +14,7 @@ from backend.control.strategy_state import ChallengeStrategyState
 from backend.control.working_memory import WorkingMemoryStore
 from backend.cost_tracker import CostTracker
 from backend.platforms.base import CompetitionPlatformClient
+from backend.provider_runtime import ProviderRuntimeGovernor
 from backend.sandbox import DockerSandbox
 
 if TYPE_CHECKING:
@@ -55,6 +56,7 @@ class CoordinatorDeps:
     knowledge_store: KnowledgeStore = field(default_factory=KnowledgeStore)
     strategy_states: dict[str, ChallengeStrategyState] = field(default_factory=dict)
     policy_engine: PolicyEngine | None = None
+    provider_runtime: ProviderRuntimeGovernor | None = None
 
     msg_port: int = 0  # 0 = auto-pick free port
 
@@ -79,3 +81,5 @@ class CoordinatorDeps:
                 bump_cooldown_seconds=60,
                 stall_seconds=180,
             )
+        if self.provider_runtime is None:
+            self.provider_runtime = ProviderRuntimeGovernor.from_settings(self.settings)

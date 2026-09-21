@@ -43,9 +43,16 @@ def test_main_help_uses_english_options_with_chinese_help() -> None:
     assert "--lingxu-cookie-file" in result.output
     assert "--all-solved-policy" in result.output
     assert "--all-solved-idle-seconds" in result.output
+    assert "--no-submit / --submit" in result.output
     assert "--writeup-mode" in result.output
     assert "--writeup-dir" in result.output
     assert "--题目目录" not in result.output
+
+
+def test_main_defaults_to_no_platform_submission() -> None:
+    no_submit = next(param for param in cli.main.params if param.name == "no_submit")
+
+    assert no_submit.default is True
 
 
 def test_msg_help_uses_english_options_with_chinese_help() -> None:

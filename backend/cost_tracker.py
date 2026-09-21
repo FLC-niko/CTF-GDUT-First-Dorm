@@ -21,6 +21,16 @@ PROVIDER_MAP: dict[str, str] = {
     "google": "google",
 }
 
+SUBSCRIPTION_PROVIDERS = {
+    "claude-sdk",
+    "codex",
+    "cpa-responses",
+    "cpa-chat",
+    "go-responses",
+    "go-chat",
+    "go-messages",
+}
+
 # Fallback pricing for models not in genai-prices (per 1M tokens, USD)
 FALLBACK_PRICING: dict[str, dict[str, float]] = {
     "us.anthropic.claude-opus-4-6-v1": {
@@ -120,6 +130,8 @@ class AgentUsage:
     provider_spec: str = ""
     duration_seconds: float = 0.0
     cost_usd: float = 0.0
+    billing_basis: str = "metered"
+    usage_estimated: bool = False
 
 
 @dataclass
@@ -152,17 +164,21 @@ class CostTracker:
         provider_spec: str = "",
         duration_seconds: float = 0.0,
     ) -> None:
-        cost = calc_cost(usage, model_name, provider_spec)
+        subscription_backed = provider_spec in SUBSCRIPTION_PROVIDERS
+        cost = 0.0 if subscription_backed else calc_cost(usage, model_name, provider_spec)
 
         if agent_name not in self.by_agent:
             self.by_agent[agent_name] = AgentUsage(
-                model_name=model_name, provider_spec=provider_spec
+                model_name=model_name,
+                provider_spec=provider_spec,
+                billing_basis="subscription" if subscription_backed else "metered",
             )
 
         agent = self.by_agent[agent_name]
         agent.usage += usage
         agent.duration_seconds += duration_seconds
         agent.cost_usd += cost
+        agent.usage_estimated = agent.usage_estimated or not usage.has_values()
 
         # Log per-step with cache rate (f-string avoids Rich handler % formatting issues)
         logger.debug(
@@ -215,7 +231,8 @@ class CostTracker:
             hit_rate = f"{(s['cached'] / s['input'] * 100):.0f}%" if s["input"] > 0 else "n/a"
             logger.info(
                 "  %s: $%.2f | %s in / %s cached (%s hit) / %s out",
-                model, s["cost"],
+                model,
+                s["cost"],
                 _fmt_tokens(s["input"]),
                 _fmt_tokens(s["cached"]),
                 hit_rate,

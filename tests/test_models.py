@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic_ai.models.openai import OpenAIResponsesModel
 
 from backend.config import Settings
-from backend.models import resolve_model, resolve_model_settings
+from backend.models import model_id_from_spec, resolve_model, resolve_model_settings
 
 
 def test_resolve_model_uses_openai_responses_for_azure() -> None:
@@ -33,3 +33,11 @@ def test_resolve_model_settings_keeps_zen_on_chat_defaults() -> None:
 
     assert settings["max_tokens"] == 128_000
     assert "openai_previous_response_id" not in settings
+
+
+def test_model_id_preserves_slashes_for_protocol_providers() -> None:
+    assert model_id_from_spec("cpa-responses/vendor/model/version") == "vendor/model/version"
+
+
+def test_native_solver_effort_suffix_is_not_part_of_model_id() -> None:
+    assert model_id_from_spec("codex/gpt-5.4/max") == "gpt-5.4"

@@ -7,6 +7,7 @@ from typing import Protocol
 
 # Status constants
 FLAG_FOUND = "flag_found"
+FLAG_CANDIDATE = "flag_candidate"
 GAVE_UP = "gave_up"
 CANCELLED = "cancelled"
 ERROR = "error"

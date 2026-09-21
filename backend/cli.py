@@ -74,11 +74,15 @@ def _setup_logging(verbose: bool = False) -> None:
 @click.option("--models", multiple=True, help="模型规格，可重复传入；默认使用全部已配置模型")
 @click.option("--challenge", default=None, help="只求解单个本地题目目录")
 @click.option("--challenges-dir", default="challenges", help="题目根目录")
-@click.option("--no-submit", is_flag=True, help="仅执行求解，不提交 flag")
+@click.option(
+    "--no-submit/--submit",
+    default=True,
+    help="默认仅求解；只有显式 --submit 才允许向平台提交 flag",
+)
 @click.option("--coordinator-model", default=None, help="协调器使用的模型；默认按后端选择")
 @click.option(
     "--coordinator",
-    default="claude",
+    default="codex",
     type=click.Choice(["claude", "codex", "azure", "none"]),
     help="协调器后端；azure 表示只走 .env 的 API 总控，none 表示无总控整场模式",
 )
@@ -264,6 +268,7 @@ async def _run_single(
         settings=settings,
         model_specs=model_specs,
         no_submit=no_submit,
+        provider_runtime=deps.provider_runtime,
     )
 
     try:
@@ -276,10 +281,14 @@ async def _run_single(
             swarm=swarm,
             result=result,
         )
-        from backend.solver_base import FLAG_FOUND
+        from backend.solver_base import FLAG_CANDIDATE, FLAG_FOUND
 
         if result and result.status == FLAG_FOUND:
-            console.print(f"\n[bold green]FLAG FOUND:[/bold green] {result.flag}")
+            console.print(f"\n[bold green]FLAG CONFIRMED:[/bold green] {result.flag}")
+        elif result and result.status == FLAG_CANDIDATE:
+            console.print(
+                f"\n[bold yellow]FLAG CANDIDATE (unconfirmed):[/bold yellow] {result.flag}"
+            )
         else:
             console.print("\n[bold red]No flag found.[/bold red]")
 

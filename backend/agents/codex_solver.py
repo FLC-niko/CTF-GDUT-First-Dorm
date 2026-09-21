@@ -32,7 +32,15 @@ from backend.models import model_id_from_spec, supports_vision
 from backend.output_types import solver_output_json_schema
 from backend.prompts import ChallengeMeta, build_prompt, list_distfiles
 from backend.sandbox import DockerSandbox
-from backend.solver_base import CANCELLED, ERROR, FLAG_FOUND, GAVE_UP, QUOTA_ERROR, SolverResult
+from backend.solver_base import (
+    CANCELLED,
+    ERROR,
+    FLAG_CANDIDATE,
+    FLAG_FOUND,
+    GAVE_UP,
+    QUOTA_ERROR,
+    SolverResult,
+)
 from backend.tools.core import (
     do_bash,
     do_list_files,
@@ -463,20 +471,23 @@ class CodexSolver:
 
             if self._structured_output and self._structured_output.get("type") == "flag_found":
                 self._flag = self._structured_output.get("flag")
-                self._findings = f"Flag found via {self._structured_output.get('method', '?')}: {self._flag}"
-                if self.no_submit:
-                    self._confirmed = True
+                self._findings = (
+                    "Unconfirmed flag candidate found via "
+                    f"{self._structured_output.get('method', '?')}"
+                )
 
             if self._confirmed and self._flag:
                 return self._result(FLAG_FOUND)
+            if self._flag:
+                return self._result(FLAG_CANDIDATE)
             return self._result(GAVE_UP)
 
         except asyncio.CancelledError:
             return self._result(CANCELLED)
         except Exception as e:
             error_str = str(e)
-            logger.error(f"[{self.agent_name}] Error: {e}", exc_info=True)
-            self._findings = f"Error: {e}"
+            logger.error("[%s] Error (%s)", self.agent_name, type(e).__name__)
+            self._findings = f"Error ({type(e).__name__})"
             self.tracer.event("error", error=error_str)
             if "quota" in error_str.lower() or "rate" in error_str.lower():
                 return self._result(QUOTA_ERROR)

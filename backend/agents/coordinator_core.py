@@ -157,6 +157,7 @@ def retire_finished_swarms(deps: CoordinatorDeps) -> list[str]:
             "error",
             "quota_error",
             "flag_found",
+            "flag_candidate",
             "gave_up",
             "no_result",
             "skipped",
@@ -235,6 +236,7 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
         model_specs=deps.model_specs,
         no_submit=deps.no_submit,
         coordinator_inbox=deps.coordinator_inbox,
+        provider_runtime=deps.provider_runtime,
     )
     deps.swarms[challenge_name] = swarm
 

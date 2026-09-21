@@ -35,7 +35,15 @@ from backend.models import model_id_from_spec
 from backend.output_types import solver_output_json_schema
 from backend.prompts import ChallengeMeta, build_prompt, list_distfiles
 from backend.sandbox import DockerSandbox
-from backend.solver_base import CANCELLED, ERROR, FLAG_FOUND, GAVE_UP, QUOTA_ERROR, SolverResult
+from backend.solver_base import (
+    CANCELLED,
+    ERROR,
+    FLAG_CANDIDATE,
+    FLAG_FOUND,
+    GAVE_UP,
+    QUOTA_ERROR,
+    SolverResult,
+)
 from backend.tracing import SolverTracer
 
 logger = logging.getLogger(__name__)
@@ -348,15 +356,17 @@ class ClaudeSolver:
                     output = getattr(message, "structured_output", None)
                     if output and output.get("type") == "flag_found":
                         self._flag = output.get("flag")
-                        self._findings = f"Flag found via {output.get('method', '?')}: {self._flag}"
-                        if self.no_submit:
-                            self._confirmed = True
+                        self._findings = (
+                            f"Unconfirmed flag candidate found via {output.get('method', '?')}"
+                        )
 
             self.tracer.event("turn_complete", duration=round(time.monotonic() - t0, 1), cost=round(self._cost_usd, 4))
 
             # Also check if flag was confirmed via submit_flag in bash
             if self._confirmed and self._flag:
                 return self._result(FLAG_FOUND)
+            if self._flag:
+                return self._result(FLAG_CANDIDATE)
             # Report per-run metrics so broken-solver detection works
             run_steps = self._step_count - steps_before
             run_cost = self._cost_usd - cost_before
@@ -366,8 +376,8 @@ class ClaudeSolver:
             return self._result(CANCELLED)
         except Exception as e:
             error_str = str(e)
-            logger.error(f"[{self.agent_name}] Error: {e}", exc_info=True)
-            self._findings = f"Error: {e}"
+            logger.error("[%s] Error (%s)", self.agent_name, type(e).__name__)
+            self._findings = f"Error ({type(e).__name__})"
             self.tracer.event("error", error=error_str)
             if "quota" in error_str.lower() or "rate" in error_str.lower() or "overloaded" in error_str.lower():
                 return self._result(QUOTA_ERROR)
