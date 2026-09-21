@@ -9,6 +9,7 @@
 - 已完成 M0：Windows x64、`feat/cpa-go-routing`、uv 0.12.17、Python 3.14.7；测试 191 passed, 1 warning；backend tests lint 通过。`pull_challenges.py` 的 15 个原有 lint 问题不属于本阶段回归。
 - Windows Docker Desktop 在 Linux 容器模式使用 Linux 虚拟化后端；Windows x64 上优先构建 `linux/amd64` 沙箱。先前主动构建 `linux/arm64` 触发的是跨架构 QEMU 路径，不能据此断言项目在 x86 Linux 中无法运行。
 - 预定 macOS Apple Silicon 运行控制端：`linux/arm64` 为本地通用题型的原生候选；x86-64 Pwn/动态逆向优先路由到原生 x86-64 Linux worker（可以是 Windows x64 Docker Linux VM，或经过 CPU 架构验证的 Ubuntu x86-64 服务器）。Mac 上运行 `linux/amd64` 属于模拟/翻译回退，不能作为唯一比赛方案。
+- 补验状态（2026-09-21）：目标 Apple Silicon Mac 已完成 `linux/arm64` 全量镜像构建、关键工具 smoke 和真实 `DockerSandbox` 生命周期测试。此结论仅覆盖 ARM64 通用题沙箱，不改变 x86-64 Pwn/Reverse 优先使用原生 amd64 worker 的要求。
 - 不要将 macOS、Windows x64、Ubuntu x86-64 混为一谈：操作系统决定宿主配置和目录处理，CPU 架构 + Linux 运行时决定容器内二进制兼容性。现有服务器若是 ARM，也不能称为原生 x86-64 worker。
 - 不购买 Claude；不依赖其 SDK 成功运行。CPA 连接 Codex 和 Antigravity；OpenCode Go 独立接入且须核对其允许的接口/协议、额度和认证方式。任何模型名与价格均从实测和官方可用目录读取，不能把过往对话中的版本名当成已验证 model ID。
 - 比赛平台自动抓题/自动提交是否允许，以正式规程为准；默认手工导题、`--no-submit`，仅对授权赛题环境运行。
@@ -32,6 +33,8 @@
 
 ## M1：Provider registry 与 doctor
 
+> 进度（2026-09-21）：显式协议注册表、模型描述、脱敏 `ctf-doctor`、Provider 错误分类及 fake transport 多轮工具回归已完成。CPA/Go 运行时 adapter 已接线；无真实凭据，因此在线 discovery 与真实服务验收仍未完成。
+
 范围：沿用已审查的 `backend/models.py` 及现有 solver 运行时，只新增 provider 的结构化描述与纯离线检测；不重写 swarm、不引入新前端。
 
 - 定义 `ProviderSpec` / `ModelSpec`、`Protocol = responses | chat_completions | anthropic_messages | native_cli`、`ModelRole` 和 capabilities；模型 ID 不可由展示名推导。
@@ -46,6 +49,8 @@
 
 ## M2：CPA 真实调用
 
+> 代码状态（2026-09-21）：Responses 与 Chat adapter、Solver 接线、协议级工具多轮测试已完成；真实 CPA `/models`、推理与 Docker 工具闭环因未配置凭据而待验收，不能标记 M2 全部完成。
+
 - 从 CPA 实际接口获取可用模型 ID；先测认证/简单响应，再测工具调用/多轮上下文/取消/超时；不能把 `/models` 成功当成 solver 成功。
 - 首先复用经验证的 Responses 路径接入一个 GPT 模型；随后验证 Gemini 在该路径是否真的兼容，不能假设与 Codex 相同。
 - 从手动导题开始，运行一题一模型、无顶层总控、`--no-submit`；记录真实工具执行、候选 Flag、用时、报错、摘要成本。
@@ -55,6 +60,8 @@
 验收：CPA 模型从题面到 Docker 工具，再到本地候选 Flag 的可复现闭环；不泄漏密钥或 Flag。
 
 ## M3：OpenCode Go 真实调用
+
+> 代码状态（2026-09-21）：Responses、Chat Completions、Anthropic Messages 三条 adapter 已完成；稳定 session header、User-Agent、并发、软硬 token 预算、429/配额熔断、订阅 usage 记录和默认禁用付费 fallback 均有离线测试。真实 Go 调用与服务端额度读取因未配置凭据而待验收，不能标记 M3 全部完成。
 
 - 查阅开发当日官方 Go 可用模型、允许的第三方接入方式、协议、缓存/推理计费、窗口额度和会话 header 要求；保留来源和查阅日期。
 - 按模型实测协议分别适配 Chat Completions / Anthropic Messages / Responses；禁止把全部 Go 视为同一种 OpenAI API。

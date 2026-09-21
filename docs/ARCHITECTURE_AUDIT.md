@@ -386,3 +386,41 @@ $env:CTF_SANDBOX_IMAGE='ctf-sandbox:amd64'
 - pytest 的用户临时目录存在本机 ACL 问题；CI/开发命令应使用可写的 `--basetemp`，这不是容器功能失败。
 
 M0.5 验收完成。下一可执行提交仍按路线图为 `feat(providers): add redacted provider registry and doctor diagnostics`；本轮没有开始 M1，也没有读取 Key、调用付费 API、自动 fallback 或提交 flag。
+
+## 12. Apple Silicon Mac 上的 Linux/arm64 沙箱补验（2026-09-21）
+
+本轮在目标 Apple Silicon Mac 上补验 arm64 通用题沙箱。Docker Desktop daemon 位于 Linux VM 中，但 daemon 与容器均为 `aarch64`，没有走 amd64 翻译或 Windows x64 上的 QEMU arm64 跨架构路径。
+
+| 检查 | 实测结果 |
+|---|---|
+| 宿主 | macOS 27.0，Darwin 27.0.0，`arm64` |
+| Docker | Client/Server 29.1.3；`os=linux arch=aarch64 cpus=8 memory=8217731072 driver=overlayfs` |
+| 构建命令 | `docker build --platform linux/arm64 --progress plain --build-arg APT_MIRROR=https://mirrors.ustc.edu.cn/ubuntu-ports -f sandbox/Dockerfile.sandbox -t ctf-sandbox:arm64 .` |
+| 镜像 | `linux/arm64`，ID `sha256:2d6445bd24798e5154ba06a0e6129d23ab824c7ea03817090c040c34d493a629`，2233556849 bytes |
+| 构建 | **成功**；18/18 步骤及镜像导出/解包完成，CADO-NFS 在 AArch64 上编译到 100% |
+| DockerSandbox 集成 | `1 passed in 1.15s` |
+
+构建初期的失败来自 Ubuntu ports 的 500/502 和 GitHub TLS 提前断开，不是架构编译错误。Dockerfile 因此增加了可选 `APT_MIRROR`、apt 有界重试/超时、Git HTTP/1.1 以及 radare2 有界重试。USTC HTTPS 镜像已实测能同时下载索引和 `.deb`；未绕过任何失败的工具层。
+
+运行时 smoke 实测为：
+
+| 项目 | 结果 |
+|---|---|
+| `uname -m` | `aarch64` |
+| Python / Sage / GDB | Python 3.10.12；SageMath 9.5；GDB 12.1 |
+| radare2 | 6.2.3，`linux-arm_64` |
+| flatter | 对 2×2 整数格实际计算成功，退出码 0 |
+| StegSeek / CADO-NFS | StegSeek 0.6；`cado-nfs --help` 退出码 0 |
+| Python CTF 库 | `pwn`、`angr`、`z3`、`pyghidra` import 成功 |
+
+为复用同一个真实容器生命周期测试，`tests/test_sandbox_docker_integration.py` 新增显式 `CTF_SANDBOX_ARCH`；默认仍为 `x86_64`，Mac 补验显式传入 `aarch64`：
+
+```bash
+RUN_DOCKER_INTEGRATION=1 \
+CTF_SANDBOX_IMAGE=ctf-sandbox:arm64 \
+CTF_SANDBOX_ARCH=aarch64 \
+UV_PYTHON=/Users/halo/.local/bin/python3.14 \
+uv run pytest -q tests/test_sandbox_docker_integration.py
+```
+
+结论：Apple Silicon + Linux/arm64 已通过通用题镜像构建、工具 smoke 和项目 `DockerSandbox` 生命周期验收。这不证明 x86-64 Pwn/Reverse 二进制可在 ARM64 上原生调试；该类题仍应路由到原生 Linux/amd64 worker。

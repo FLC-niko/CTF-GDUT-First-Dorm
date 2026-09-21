@@ -3,8 +3,9 @@
 Hunting Blade 是基于 `ctf-agent` 的二开版本。在同一道题交给多个大模型并行求解的基础理念上进一步工程化：支持整场轮询、国内竞赛平台接入、手动导入题目题、自动收尾与监听新题目下发、凌虚竞赛平台环境自动释放，以及赛后 writeup 的自动撰写。下面是几个值得注意的点：
 
 1. `ctf-solve` 不传 `--challenge` 时是整场模式；传了 `--challenge` 时是单题模式。
-2. 如果你本机没有可用的 `codex` 或 Claude SDK，不要直接使用默认模型列表；请显式传 `--models`，并优先选择 `--coordinator azure` 或 `--coordinator none`。
+2. 默认模型与默认协调器只依赖本机 Codex，不要求 Claude。使用 CPA 或 OpenCode Go 时请显式传入带协议的 `--models`。
 3. `--all-solved-policy` 默认值是 `wait`，所以全题解完后会继续等待新题，不会自动退出。
+4. 默认 `--no-submit`；只有显式传入 `--submit` 才允许向平台提交候选 Flag。
 
 ## 主要命令
 
@@ -13,6 +14,7 @@ Hunting Blade 是基于 `ctf-agent` 的二开版本。在同一道题交给多�
 | `ctf-solve` | 整场比赛求解，或对单题目录进行本地调试 |
 | `ctf-msg` | 给正在运行的协调器发送操作员消息 |
 | `ctf-import` | 把人工整理的题面、附件、连接信息导入为标准本地题目目录 |
+| `ctf-doctor` | 离线检查宿主、Docker 与脱敏的 provider 配置状态 |
 
 ## 增强改进
 
@@ -142,6 +144,44 @@ uv sync
 docker build -f sandbox/Dockerfile.sandbox -t ctf-sandbox .
 ```
 
+Apple Silicon 上可以显式构建已验收的 ARM64 通用题镜像；默认 Ubuntu ports 路由不稳定时可使用可选镜像参数：
+
+```bash
+docker build --platform linux/arm64 \
+  --build-arg APT_MIRROR=https://mirrors.ustc.edu.cn/ubuntu-ports \
+  -f sandbox/Dockerfile.sandbox \
+  -t ctf-sandbox:arm64 .
+
+RUN_DOCKER_INTEGRATION=1 \
+CTF_SANDBOX_IMAGE=ctf-sandbox:arm64 \
+CTF_SANDBOX_ARCH=aarch64 \
+uv run pytest -q tests/test_sandbox_docker_integration.py
+```
+
+该 ARM64 镜像不等价于原生 x86-64 Linux；Pwn 和需动态调试的 Reverse 题仍应使用 `linux/amd64` worker。
+
+### 离线诊断
+
+M1 开始提供一个不请求任何模型或比赛平台的安全检查入口：
+
+```bash
+uv run ctf-doctor
+uv run ctf-doctor --model cpa-responses/EXACT_MODEL_ID
+```
+
+doctor 只检查配置是否存在、provider 的显式协议路由、本机 Docker daemon 与沙箱镜像；它不访问 `/models`，不发送推理请求，也不输出 API Key 或完整 endpoint。`cpa-responses`、`cpa-chat`、`go-chat`、`go-messages`、`go-responses` 已有运行时 adapter 和 fake transport 协议回归；当前仓库没有真实凭据，因此真实 CPA/Go 请求仍未验收。
+
+真实工具调用 smoke 必须显式 opt-in，并在 `.env` 中准备对应凭据：
+
+```bash
+RUN_PROVIDER_LIVE=1 CPA_SMOKE_MODEL=cpa-responses/EXACT_MODEL_ID \
+  uv run pytest -q tests/test_provider_live_smoke.py -k cpa
+RUN_PROVIDER_LIVE=1 GO_SMOKE_MODEL=go-chat/EXACT_MODEL_ID \
+  uv run pytest -q tests/test_provider_live_smoke.py -k go
+```
+
+这两条会产生真实模型请求；普通 `pytest` 只会跳过，不会消耗额度。
+
 ### `.env` 示例
 
 先复制模板：
@@ -170,6 +210,17 @@ AWS_REGION=us-east-1
 AWS_BEARER_TOKEN=
 OPENCODE_ZEN_API_KEY=
 
+# CPA：按服务器实际部署分别填写 Responses 与 Chat base URL
+CPA_RESPONSES_BASE_URL=
+CPA_CHAT_BASE_URL=
+CPA_API_KEY=
+
+# OpenCode Go：协议由 provider alias 明确选择
+OPENCODE_GO_API_KEY=
+OPENCODE_GO_CHAT_BASE_URL=https://opencode.ai/zen/go/v1
+OPENCODE_GO_RESPONSES_BASE_URL=https://opencode.ai/zen/go/v1
+OPENCODE_GO_MESSAGES_BASE_URL=https://opencode.ai/zen/go
+
 # Lingxu Event CTF
 PLATFORM=lingxu-event-ctf
 PLATFORM_URL=https://ctf.yunyansec.com
@@ -194,13 +245,19 @@ uv run ctf-solve ...
 
 而且没有传 `--models`，程序会使用默认模型列表：
 
-- `claude-sdk/claude-opus-4-6/medium`
-- `claude-sdk/claude-opus-4-6/max`
 - `codex/gpt-5.4`
 - `codex/gpt-5.4-mini`
 - `codex/gpt-5.3-codex`
 
-这意味着：你需要本机具备对应的 `codex` / Claude SDK 运行能力。如果你没有这些本地能力，请显式传 API 型模型，例如 `azure/gpt-5.4`、`azure/gpt-5.4-mini`。如果你想让 solver 和总控都只走 `.env`，优先用 `--coordinator azure`；如果你只想保留最小编排闭环，优先用 `--coordinator none`。
+这意味着默认只要求本机 `codex` 运行能力，不要求 Claude。CPA 示例为 `cpa-responses/EXACT_MODEL_ID` 或 `cpa-chat/EXACT_MODEL_ID`；OpenCode Go 示例为 `go-responses/EXACT_MODEL_ID`、`go-chat/EXACT_MODEL_ID` 或 `go-messages/EXACT_MODEL_ID`。模型 ID 必须来自服务端实际目录，系统不会根据显示名猜协议或角色。若只想保留最小编排闭环，使用 `--coordinator none`。
+
+### OpenCode Go 协议与额度边界
+
+截至 2026-09-21，官方 Go 文档给出的端点为 `/zen/go/v1/responses`、`/chat/completions`、`/messages` 与 `/models`。每个 Solver 会在同一多轮会话中复用稳定的 `x-opencode-session`，不同 Solver 使用不同会话 ID，并发送明确的 `ctf-agent/0.1` User-Agent。Go 是订阅资源，本地保留服务端返回的 token usage，但不会把订阅请求伪装成按量美元成本。
+
+当日核对过的协议、额度、模型 ID 示例与隐私边界见 [`docs/PROVIDER_PROTOCOLS.md`](docs/PROVIDER_PROTOCOLS.md)。
+
+本地可配置 CPA/Go 的并发、软 token 预算、硬 token 预算；429 会短时熔断，配额耗尽与硬预算会持续阻断。自动切换到 Azure/Bedrock/Zen 等可能计费的 fallback 默认关闭。Go 控制台的 “Use balance” 是账户侧设置，客户端无法替你关闭，比赛前必须人工确认它保持关闭。
 
 ## 运行方式
 
@@ -209,7 +266,8 @@ uv run ctf-solve ...
 | 先跑起来 | `--coordinator azure` + 2 到 3 个 `azure/...` | solver 和总控都只走 `.env`，不依赖本地 Codex/Claude |
 | 最小闭环 | `--coordinator none` + 2 到 3 个 API 型 `--models` | 完全不要顶层模型总控，失败面最小 |
 | 要顶层策略调度 | `--coordinator azure`、`--coordinator codex` 或 `--coordinator claude` | 总控会读取 solver trace 并广播提示 |
-| 只做流程回归，不真提交 | `--no-submit` + `--writeup-mode solved` | 能保留大部分真实流程，又不会真正交 flag |
+| 默认安全运行 | `--no-submit` + `--writeup-mode solved` | 默认值，不会把候选 Flag 当作平台确认或真正提交 |
+| 明确允许提交 | `--submit` | 仅在竞赛规则与平台授权都已确认后使用 |
 | 解完就退出 | `--all-solved-policy exit` | 没有未解题且没有活动 swarm 时直接结束 |
 | 解完后再等一会儿 | `--all-solved-policy idle --all-solved-idle-seconds 600` | 适合比赛末尾等加题或等平台刷新 |
 

@@ -23,6 +23,7 @@ def _docker_integration_enabled() -> bool:
 @pytest.mark.asyncio
 async def test_real_docker_sandbox_mount_exec_cancel_and_cleanup(tmp_path: Path) -> None:
     image = os.getenv("CTF_SANDBOX_IMAGE", "ctf-sandbox:amd64")
+    expected_arch = os.getenv("CTF_SANDBOX_ARCH", "x86_64")
     challenge_dir = tmp_path / "challenge"
     distfiles = challenge_dir / "distfiles"
     distfiles.mkdir(parents=True)
@@ -46,7 +47,7 @@ async def test_real_docker_sandbox_mount_exec_cancel_and_cleanup(tmp_path: Path)
             "uname -m; cat /challenge/distfiles/input.txt; cat /challenge/metadata.yml"
         )
         assert mounted.exit_code == 0
-        assert "x86_64" in mounted.stdout
+        assert expected_arch in mounted.stdout
         assert "mounted-read-only" in mounted.stdout
         assert "name: m0.5-smoke" in mounted.stdout
 

@@ -6,6 +6,22 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TERM=xterm
 
+# Optional mirror override for unreliable/slow ubuntu-ports routes. Example:
+#   --build-arg APT_MIRROR=https://mirrors.ustc.edu.cn/ubuntu-ports
+ARG APT_MIRROR=""
+RUN case "$APT_MIRROR" in \
+      https://*) \
+        apt-get update \
+        && apt-get install -y --no-install-recommends ca-certificates \
+        && rm -rf /var/lib/apt/lists/* \
+        ;; \
+    esac \
+    && if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|http://ports.ubuntu.com/ubuntu-ports|$APT_MIRROR|g" /etc/apt/sources.list; \
+    fi \
+    && printf 'Acquire::Retries "10";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+       > /etc/apt/apt.conf.d/80-ctf-agent-retries
+
 # ── System packages ───────────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y \
     # Networking
@@ -57,8 +73,24 @@ RUN apt-get update && apt-get install -y curl gnupg2 \
     || echo "Podman install failed (non-fatal) — nested containers will not be available"
 
 # ── radare2 ───────────────────────────────────────────────────────────────────
-RUN git clone --depth=1 https://github.com/radareorg/radare2 /tmp/r2 \
-    && cd /tmp/r2 && bash sys/install.sh --install \
+# GitHub subproject fetches are more reliable through proxies with HTTP/1.1.
+RUN git config --global http.version HTTP/1.1
+RUN attempt=1 \
+    && until git clone --depth=1 https://github.com/radareorg/radare2 /tmp/r2; do \
+         rm -rf /tmp/r2; \
+         if [ "$attempt" -ge 5 ]; then exit 1; fi; \
+         echo "radare2 clone failed; retrying ($attempt/5)"; \
+         attempt=$((attempt + 1)); \
+         sleep 5; \
+       done \
+    && cd /tmp/r2 \
+    && attempt=1 \
+    && until bash sys/install.sh --install; do \
+         if [ "$attempt" -ge 5 ]; then exit 1; fi; \
+         echo "radare2 build failed; retrying subproject fetches ($attempt/5)"; \
+         attempt=$((attempt + 1)); \
+         sleep 5; \
+       done \
     && ldconfig \
     && r2 -v \
     && rm -rf /tmp/r2
