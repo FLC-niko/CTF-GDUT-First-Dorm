@@ -1,5 +1,13 @@
 # Development changelog
 
+## 2026-09-21 — M7 Long-running simulation, fault injection resilience, and configuration freeze
+
+- Implemented `CompetitionSimulator` and `FaultInjector` in `backend/simulation.py`, verifying continuous long-running stability and self-healing across simulated 4-hour competition scenarios.
+- Executed fault injection test suites (`tests/test_fault_injection.py`): validated 429 rate limit pausing and recovery, unexpected container crash lease recovery, network timeout recovery, and clean process restart from persisted state.
+- Created frozen production configuration `competition_profile.yml`: locked model hierarchy (Fast: `gpt-5.4-mini` / `qwen-2.5-coder-7b`; Expert: `gpt-5.4` / `deepseek-r1`; Racing: `Codex GPT` + `CPA Gemini` + `Go DeepSeek`), multi-worker topology (Mac arm64 local + VM 103 dockers amd64 remote), resource budgets (4G RAM, 2 CPUs, 512 PIDs), and strict `--no-submit` safety rules.
+- Authored competition operations manual `docs/COMPETITION_GUIDE.md` detailing pre-competition preflights, tiered execution commands, candidate flag confirmation, and emergency failover protocols.
+- Verification with CPython 3.14.7: `273 passed, 4 skipped, 1 warning in 3.65s`; `ruff check backend tests` and `git diff --check` passed.
+
 ## 2026-09-21 — M6 CTF Benchmark suite, marginal racing metrics, and model role matrix
 
 - Built standard 5-challenge reproducible benchmark suite covering Web, Crypto, Misc, Pwn, and Reverse categories in `benchmark_suites/standard_5/`.

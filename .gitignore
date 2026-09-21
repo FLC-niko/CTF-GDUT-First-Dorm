@@ -29,3 +29,4 @@ codex-schema-*/
 .DS_Store
 workers.*.yml
 !workers.example.yml
+competition_state*.json

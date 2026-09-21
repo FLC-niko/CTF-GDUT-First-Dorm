@@ -1,0 +1,67 @@
+# Formal Competition Profile & Configuration Freeze
+# Version: 1.0 (Frozen 2026-09-21 for CTF Competition)
+
+version: 1
+
+# ── General Competition Rules & Safety ────────────────────────────────────────
+safety:
+  # Strictly false by default. Only set to true when rules explicitly authorize automated submission.
+  auto_submit: false
+  redact_secrets_in_logs: true
+  candidate_flag_isolation: true
+  allow_paid_api_fallback: false
+
+# ── Multi-Agent Solver Roles & Models ─────────────────────────────────────────
+models:
+  # Fast Tier: Low token cost, high speed, warmup & triage validation
+  fast:
+    - codex/gpt-5.4-mini
+    - go-chat/qwen-2.5-coder-7b
+  fast_timeout_seconds: 300
+
+  # Expert Tier: Strong reasoning, deep static/dynamic exploitation
+  expert:
+    - codex/gpt-5.4
+    - go-messages/deepseek-r1
+  expert_timeout_seconds: 900
+
+  # Racing Tier: Cross-family exploration when single model stalls
+  racing:
+    - codex/gpt-5.4
+    - cpa-responses/gemini-2.5-pro
+    - go-messages/deepseek-r1
+  racing_timeout_seconds: 1800
+
+# ── Worker Topology & Execution Routing ───────────────────────────────────────
+workers:
+  # Local controller (Apple Silicon Mac arm64) for general CTF challenges
+  - name: local-mac-arm64
+    transport: local
+    os: linux
+    arch: arm64
+    native_arch: arm64
+    image: ctf-sandbox:arm64
+    max_concurrency: 2
+    security_profiles: [standard, debug, forensics]
+
+  # Dedicated remote worker (VM 103 dockers 16-core 32GB) for native x86-64 binary analysis & pwn
+  - name: vm103-dockers-amd64
+    transport: ssh
+    os: linux
+    arch: amd64
+    native_arch: amd64
+    image: ctf-sandbox:amd64
+    max_concurrency: 4
+    security_profiles: [standard, debug, forensics, nested]
+    ssh_host: 10.21.76.27
+    ssh_user: topview
+    ssh_port: 22
+    remote_root: /tmp/ctf-agent
+
+# ── Container Resource & Security Governance ──────────────────────────────────
+sandbox:
+  memory_limit: 4g
+  cpu_limit: 2.0
+  pids_limit: 512
+  security_profile: auto
+  network_mode: bridge
