@@ -1,0 +1,8 @@
+name: rev_xor_check
+category: reverse
+value: 200
+description: |
+  Simple binary checking user input byte-by-byte using rolling XOR cipher key 0x5a.
+tags:
+  - xor
+  - reversing

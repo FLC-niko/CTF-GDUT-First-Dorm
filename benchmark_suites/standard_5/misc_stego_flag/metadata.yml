@@ -1,0 +1,8 @@
+name: misc_stego_flag
+category: misc
+value: 100
+description: |
+  Inspect the attached file with strings, binwalk or exiftool to recover flag.
+tags:
+  - forensics
+  - metadata

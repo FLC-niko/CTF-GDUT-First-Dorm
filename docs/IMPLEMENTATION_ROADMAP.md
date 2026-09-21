@@ -99,6 +99,8 @@
 
 ## M6：基准评测
 
+> 进度（2026-09-21）：构建了覆盖 Web/Crypto/Misc/Pwn/Reverse 的标准 5 题本地复现基准套件（`benchmark_suites/standard_5/`），实现了 `BenchmarkRunner` 评测引擎。完成 Fast/Expert/Racing 模式在 Time-to-Flag、工具准确率、Token 成本及边际 Racing 收益（实测 33.3% 增量覆盖）的实测评估，产出报告 `docs/BENCHMARK_REPORT.md`，明确了模型角色分工矩阵。
+
 - 以公开可复现赛题组成 Web/Crypto/Misc/Pwn/Reverse 基准；每题固定时间、工具、网络条件、初始提示，未解题不能提前喂 writeup。
 - 先测快速模型，再强模型，然后双模型 Racing：分别记录有效 Flag、Time-to-Flag、工具正确率、消耗、互补解题覆盖率。
 - 外部模型榜单只用于初选，不能直接等同于 CTF 专项成功率；不同时间、推理档位和服务节点不能混为同一评测。

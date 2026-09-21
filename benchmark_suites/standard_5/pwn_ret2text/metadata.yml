@@ -1,0 +1,8 @@
+name: pwn_ret2text
+category: pwn
+value: 250
+description: |
+  Classic 64-bit stack buffer overflow with a win() target function at fixed address.
+tags:
+  - bof
+  - arch:amd64

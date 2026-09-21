@@ -1,0 +1,9 @@
+name: crypto_affine
+category: crypto
+value: 150
+description: |
+  Affine cipher encrypted ciphertext with known parameters.
+  Solve for the key: a=7, b=11 mod 256.
+tags:
+  - affine
+  - classical

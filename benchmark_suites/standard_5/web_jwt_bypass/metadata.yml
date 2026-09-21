@@ -1,0 +1,9 @@
+name: web_jwt_bypass
+category: web
+value: 100
+description: |
+  A simple web API that validates tokens with none algorithm or weak key.
+  Retrieve the admin secret flag.
+tags:
+  - jwt
+  - auth

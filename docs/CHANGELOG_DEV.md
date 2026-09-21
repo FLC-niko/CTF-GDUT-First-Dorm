@@ -1,5 +1,13 @@
 # Development changelog
 
+## 2026-09-21 — M6 CTF Benchmark suite, marginal racing metrics, and model role matrix
+
+- Built standard 5-challenge reproducible benchmark suite covering Web, Crypto, Misc, Pwn, and Reverse categories in `benchmark_suites/standard_5/`.
+- Implemented `BenchmarkRunner` and `BenchmarkSuiteResult` in `backend/benchmark.py`, evaluating Fast, Expert, and Racing configurations on Time-to-Flag, tool execution accuracy, token costs, and marginal racing coverage.
+- Generated comprehensive Markdown report in `docs/BENCHMARK_REPORT.md` and structured JSON metrics in `docs/BENCHMARK_REPORT.json`.
+- Established empirical model role assignments: lightweight Fast models (`gpt-5.4-mini` / `qwen-2.5-coder-7b`) for rapid triage and warmup solves; strong Expert models (`gpt-5.4` / `deepseek-r1`) for complex reasoning; cross-family Racing solvers delivering a measured 33.3% marginal coverage increase on hard challenges.
+- Added tests in `tests/test_benchmark.py`: `269 passed, 4 skipped, 1 warning`; `ruff check backend tests` passed.
+
 ## 2026-09-21 — M5 Challenge management, triage, tiered dynamic scheduling and racing
 
 - Implemented `ChallengeManager` and explicit lifecycle state machine: `pending` -> `triaged` -> `solving` (fast/expert/racing) -> `solved` (candidate flag) -> `confirmed` (platform verified) / `failed` / `paused` / `skipped`.
