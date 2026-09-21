@@ -27,3 +27,5 @@ codex-schema-*/
 .claude/scheduled_tasks.lock
 .worktrees/
 .DS_Store
+workers.*.yml
+!workers.example.yml

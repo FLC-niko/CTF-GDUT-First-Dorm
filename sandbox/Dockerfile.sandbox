@@ -1,13 +1,15 @@
 # CTF challenge solver sandbox image.
 # Build once: docker build -f Dockerfile.sandbox -t ctf-sandbox .
 
-FROM ubuntu:22.04
+ARG BASE_IMAGE=ubuntu:22.04
+FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TERM=xterm
 
-# Optional mirror override for unreliable/slow ubuntu-ports routes. Example:
-#   --build-arg APT_MIRROR=https://mirrors.ustc.edu.cn/ubuntu-ports
+# Optional mirror override for unreliable/slow Ubuntu routes. Use `/ubuntu` on
+# amd64 and `/ubuntu-ports` on arm64. The replacement covers archive, security,
+# and ports sources without coupling the Dockerfile to a controller OS.
 ARG APT_MIRROR=""
 RUN case "$APT_MIRROR" in \
       https://*) \
@@ -17,7 +19,9 @@ RUN case "$APT_MIRROR" in \
         ;; \
     esac \
     && if [ -n "$APT_MIRROR" ]; then \
-      sed -i "s|http://ports.ubuntu.com/ubuntu-ports|$APT_MIRROR|g" /etc/apt/sources.list; \
+      sed -Ei \
+        "s@https?://(archive\.ubuntu\.com/ubuntu|security\.ubuntu\.com/ubuntu|ports\.ubuntu\.com/ubuntu-ports)@$APT_MIRROR@g" \
+        /etc/apt/sources.list; \
     fi \
     && printf 'Acquire::Retries "10";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
        > /etc/apt/apt.conf.d/80-ctf-agent-retries

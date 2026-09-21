@@ -10,6 +10,7 @@ from backend.doctor import (
     DiagnosticStatus,
     collect_docker_checks,
     collect_provider_checks,
+    collect_worker_checks,
     doctor,
 )
 
@@ -125,6 +126,41 @@ def test_doctor_json_is_offline_and_redacted(monkeypatch) -> None:
     report = json.loads(result.output)
     assert any(item["name"] == "cpa-responses" for item in report)
     assert any(item["category"] == "model" for item in report)
+
+
+def test_worker_checks_are_offline_and_redact_ssh_endpoint(tmp_path: Path) -> None:
+    config = tmp_path / "workers.yml"
+    host = "private-worker.example.test"
+    config.write_text(
+        f"""
+version: 1
+workers:
+  - name: x86-worker
+    transport: ssh
+    os: linux
+    arch: amd64
+    image: ctf-sandbox:amd64
+    ssh_host: {host}
+""".strip(),
+        encoding="utf-8",
+    )
+
+    checks = collect_worker_checks(_settings(worker_config_file=str(config)))
+
+    assert len(checks) == 1
+    assert checks[0].status is DiagnosticStatus.OK
+    assert host not in repr(checks)
+    assert "platform=linux/amd64" in checks[0].detail
+    assert "auth=<external>" in checks[0].detail
+
+
+def test_worker_checks_report_invalid_config_without_exposing_path(tmp_path: Path) -> None:
+    missing = tmp_path / "sensitive-worker-name.yml"
+
+    checks = collect_worker_checks(_settings(worker_config_file=str(missing)))
+
+    assert checks[0].status is DiagnosticStatus.ERROR
+    assert str(missing) not in repr(checks)
 
 
 def test_pyproject_exposes_ctf_doctor_script() -> None:

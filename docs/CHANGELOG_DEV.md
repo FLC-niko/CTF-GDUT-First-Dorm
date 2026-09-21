@@ -1,5 +1,17 @@
 # Development changelog
 
+## 2026-09-21 — M4 sandbox lifecycle, security profiles, and remote worker routing
+
+- Replaced start-only semaphore with full container lifecycle leases (`acquire_lifecycle_lease` / `release_lifecycle_lease`) ensuring limits hold across the entire lifetime of a container and release safely on errors and cancellations.
+- Governed default container resources: reduced memory default from 16GB to 4GB, added configurable CPU limits (default 2.0), PIDs limits (default 512), and network mode controls.
+- Enforced least-privilege security profiles (`standard`, `debug`, `forensics`, `nested`) via `resolve_sandbox_profile`: containers drop `ALL` capabilities by default, granting `SYS_PTRACE` or `SYS_ADMIN` only when demanded by challenge type or tags.
+- Added capability-based `WorkerRegistry` supporting local and SSH workers with platform normalization (`amd64`, `arm64`) and requirement-based routing (e.g. routing Pwn/Reverse to native amd64 workers). Storing passwords or tokens in worker config is strictly forbidden.
+- Implemented `RemoteDockerSandbox` with automated challenge attachment tarball synchronization over SSH, isolated run directories, and safe cleanup without dangling containers.
+- Unified sandbox creation across `Solver`, `CodexSolver`, and `ClaudeSolver` using `create_sandbox`.
+- Extended `ctf-doctor` with offline, secrets-redacted worker configuration diagnostics.
+- Added extensive test coverage: `tests/test_sandbox_lifecycle.py`, `tests/test_workers.py`, `tests/test_remote_sandbox.py`, and `tests/test_remote_sandbox_integration.py`.
+- Verified with CPython 3.14.7: `263 passed, 4 skipped, 1 warning`; real Docker integration passed on local arm64 daemon; `ruff check backend tests` and `git diff --check` passed.
+
 ## 2026-09-21 — Apple Silicon Linux/arm64 sandbox acceptance
 
 - Built `ctf-sandbox:arm64` successfully on the target Mac with an `aarch64` Docker daemon; all 18 Dockerfile steps, CADO-NFS compilation, image export, and unpack completed without QEMU or `ldconfig` failure.

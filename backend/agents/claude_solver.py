@@ -34,7 +34,7 @@ from backend.loop_detect import LoopDetector
 from backend.models import model_id_from_spec
 from backend.output_types import solver_output_json_schema
 from backend.prompts import ChallengeMeta, build_prompt, list_distfiles
-from backend.sandbox import DockerSandbox
+from backend.sandbox_factory import create_sandbox
 from backend.solver_base import (
     CANCELLED,
     ERROR,
@@ -87,11 +87,7 @@ class ClaudeSolver:
         self.message_bus = message_bus
         self.notify_coordinator = notify_coordinator
 
-        self.sandbox = DockerSandbox(
-            image=getattr(settings, "sandbox_image", "ctf-sandbox"),
-            challenge_dir=challenge_dir,
-            memory_limit=getattr(settings, "container_memory_limit", "4g"),
-        )
+        self.sandbox = create_sandbox(settings, challenge_dir, meta)
         self.loop_detector = LoopDetector()
         self.tracer = SolverTracer(meta.name, self.model_id)
         self.agent_name = f"{meta.name}/{self.model_id}"

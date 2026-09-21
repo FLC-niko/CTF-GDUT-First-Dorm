@@ -18,15 +18,16 @@ Hunting Blade 是基于 `ctf-agent` 的二开版本。在同一道题交给多�
 | M1：Provider Registry 与 Doctor | **已完成** | 显式 Provider/协议注册、精确模型 ID、脱敏离线 `ctf-doctor`、错误分类、配置验证和 fake transport 回归已完成 | Doctor 默认不请求 `/models`；真实模型发现和端点验收归入 M2/M3 |
 | M2：CPA 模型接入 | **代码/离线协议完成** | `cpa-responses` 与 `cpa-chat` adapter、Solver 接线、工具调用多轮回归、并发/预算/熔断和默认禁止付费 fallback 已完成 | 当前未配置 CPA endpoint/Key；真实 `/models`、GPT/Gemini 工具调用和从题面到候选 Flag 的 Docker 闭环尚未验收 |
 | M3：OpenCode Go 接入与额度治理 | **代码/离线协议完成** | `go-responses`、`go-chat`、`go-messages` 三协议 adapter；每 Solver 稳定独立 session；token usage、软/硬预算、429/配额熔断和候选 Flag/平台确认分离已完成 | 当前未配置 OpenCode Go Key；真实模型目录、订阅额度、至少一个模型的 CTF 工具闭环尚未验收 |
-| M4：资源、安全与跨平台 worker | **未开始（部分前置已完成）** | Provider 共享并发、日志/轨迹脱敏、amd64/arm64 镜像基线已具备 | 容器全生命周期资源治理、权限收紧、出站策略、远程 worker 附件同步与故障恢复待实现 |
+| M4：资源、安全与跨平台 worker | **已完成** | 容器生命周期租约、资源治理（4G/2CPU/512PIDs）、最小特权安全 profile（standard/debug/forensics/nested）、跨平台 WorkerRegistry 与 SSH 远程沙箱流式附件同步已完成；Mac arm64 本地与 VM 103（Ubuntu 16核 32GB）原生 x86_64 真实集成测试 100% 通过 | 已实测 VM 103 6.84GB 全量镜像与工具链；远程 worker 使用纯密钥免密登录，不存凭证；生产环境支持按架构路由 Pwn/Reverse |
 | M5：题目管理、Triage 与动态调度 | **未开始** | 现有 Poller、Coordinator、Swarm、Policy Engine 和 Working Memory 作为复用基础 | 跨题队列、Fast/Expert/Racing 规则、额度感知调度、持久化与中断恢复待实现；不会根据模型名硬编码分工 |
 | M6：历史 CTF Benchmark | **未开始** | 已确定用真实历史题比较模型家族和 Racing 边际收益 | 题集、限时、成本、Time-to-Flag 和互补覆盖率报告待建立；尚未冻结 Fast/Expert 模型分工 |
 | M7：四小时模拟赛与配置冻结 | **未开始** | 已确定默认不自动提交，候选 Flag 与平台确认分离 | 比赛规则确认、四小时长跑、429/断网/Docker 退出/额度耗尽故障注入及最终镜像/模型 ID 冻结待完成 |
 
 当前验证基线：
 
-- CPython 3.14.7 / macOS arm64：`232 passed, 3 skipped, 1 warning`；两个 Provider 真实 smoke 和一个 Docker 集成测试默认为 opt-in。
-- `RUN_DOCKER_INTEGRATION=1` + `ctf-sandbox:arm64`：真实 `DockerSandbox` 挂载、执行、取消与清理测试 `1 passed`。
+- CPython 3.14.7 / macOS arm64：`263 passed, 4 skipped, 1 warning`；两个 Provider 真实 smoke、一个本地 Docker 集成测试和一个远程 SSH 沙箱集成测试默认为 opt-in。
+- `RUN_DOCKER_INTEGRATION=1` + `ctf-sandbox:arm64`：本地真实 `DockerSandbox` 挂载、执行、取消与清理测试 `1 passed`。
+- `RUN_REMOTE_DOCKER_INTEGRATION=1` + VM 103（`dockers` / `10.21.76.27`）：远程真实 `RemoteDockerSandbox` 附件打包同步、原生 `x86_64` 运行、双向读写与资源清理测试 `1 passed`。
 - `ruff check backend tests` 和 `git diff --check` 通过。
 - 真实 CPA/OpenCode Go 验收必须显式设置 `RUN_PROVIDER_LIVE=1`；当前没有也不会伪造成功结果。
 

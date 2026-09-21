@@ -44,6 +44,7 @@ from backend.provider_runtime import (
 )
 from backend.providers import get_provider_spec
 from backend.sandbox import DockerSandbox
+from backend.sandbox_factory import create_sandbox
 from backend.solver_base import (
     CANCELLED,
     CORRECT_MARKERS,
@@ -163,11 +164,7 @@ class Solver:
         self.provider_session_id = str(uuid4())
         self._owns_sandbox = owns_sandbox if owns_sandbox is not None else (sandbox is None)
 
-        self.sandbox = sandbox or DockerSandbox(
-            image=getattr(settings, "sandbox_image", "ctf-sandbox"),
-            challenge_dir=challenge_dir,
-            memory_limit=getattr(settings, "container_memory_limit", "4g"),
-        )
+        self.sandbox = sandbox or create_sandbox(settings, challenge_dir, meta)
         self.use_vision = supports_vision(model_spec)
         self.deps = SolverDeps(
             sandbox=self.sandbox,

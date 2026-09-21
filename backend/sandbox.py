@@ -17,9 +17,11 @@ import aiodocker
 logger = logging.getLogger(__name__)
 
 CONTAINER_LABEL = "ctf-agent"
+SANDBOX_PROFILES = {"standard", "debug", "forensics", "nested"}
 
-# Concurrency control
-_start_semaphore: asyncio.Semaphore | None = None
+# Concurrency control. A lease is held for the complete container lifetime, not
+# only while Docker is creating the container.
+_lifecycle_semaphore: asyncio.Semaphore | None = None
 _active_count: int = 0
 _count_lock = asyncio.Lock()
 
@@ -27,9 +29,28 @@ _WARN_THRESHOLDS = {100, 200, 500}
 
 
 def configure_semaphore(max_concurrent: int = 50) -> None:
-    """Set the max concurrent container starts. Call once at startup."""
-    global _start_semaphore
-    _start_semaphore = asyncio.Semaphore(max_concurrent)
+    """Set the maximum number of live solver containers."""
+    if max_concurrent <= 0:
+        raise ValueError("max_concurrent must be greater than 0")
+    if _active_count:
+        raise RuntimeError("Cannot reconfigure sandbox concurrency while containers are active")
+    global _lifecycle_semaphore
+    _lifecycle_semaphore = asyncio.Semaphore(max_concurrent)
+
+
+def _get_lifecycle_semaphore() -> asyncio.Semaphore:
+    global _lifecycle_semaphore
+    if _lifecycle_semaphore is None:
+        _lifecycle_semaphore = asyncio.Semaphore(50)
+    return _lifecycle_semaphore
+
+
+async def acquire_lifecycle_lease() -> None:
+    await _get_lifecycle_semaphore().acquire()
+
+
+def release_lifecycle_lease() -> None:
+    _get_lifecycle_semaphore().release()
 
 
 async def _track_start() -> None:
@@ -81,11 +102,18 @@ class DockerSandbox:
 
     image: str
     challenge_dir: str
-    memory_limit: str = "16g"
+    memory_limit: str = "4g"
+    cpu_limit: float = 2.0
+    pids_limit: int = 512
+    security_profile: str = "standard"
+    network_mode: str = "bridge"
+    loop_device: str = ""
     workspace_dir: str = ""
     _container: Any = field(default=None, repr=False)
     _docker: Any = field(default=None, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    _lease_acquired: bool = field(default=False, init=False, repr=False)
+    _tracked_active: bool = field(default=False, init=False, repr=False)
 
     @property
     def container_id(self) -> str:
@@ -106,9 +134,53 @@ class DockerSandbox:
             logger.warning("Invalid memory_limit %r, defaulting to 4GB", self.memory_limit)
             return 4 * 1024 * 1024 * 1024
 
+    def _host_config(self, binds: list[str]) -> dict[str, Any]:
+        if self.security_profile not in SANDBOX_PROFILES:
+            raise ValueError(f"Unknown sandbox security profile: {self.security_profile}")
+        if self.cpu_limit <= 0:
+            raise ValueError("cpu_limit must be greater than 0")
+        if self.pids_limit <= 0:
+            raise ValueError("pids_limit must be greater than 0")
+        if self.network_mode not in {"bridge", "none"}:
+            raise ValueError("network_mode must be 'bridge' or 'none'")
+
+        memory = self._parse_memory_limit()
+        config: dict[str, Any] = {
+            "Binds": binds,
+            "CapDrop": ["ALL"],
+            "SecurityOpt": ["no-new-privileges=true"],
+            "Memory": memory,
+            "MemorySwap": memory,
+            "NanoCpus": int(self.cpu_limit * 1e9),
+            "PidsLimit": self.pids_limit,
+            "NetworkMode": self.network_mode,
+        }
+        if self.network_mode == "bridge":
+            config["ExtraHosts"] = ["host.docker.internal:host-gateway"]
+
+        if self.security_profile == "debug":
+            config["CapAdd"] = ["SYS_PTRACE"]
+            config["SecurityOpt"].append("seccomp=unconfined")
+        elif self.security_profile in {"forensics", "nested"}:
+            config["CapAdd"] = ["SYS_ADMIN"]
+            config["SecurityOpt"].append("seccomp=unconfined")
+            if self.loop_device:
+                config["Devices"] = [
+                    {
+                        "PathOnHost": self.loop_device,
+                        "PathInContainer": self.loop_device,
+                        "CgroupPermissions": "rwm",
+                    }
+                ]
+        return config
+
     async def start(self) -> None:
-        sem = _start_semaphore or asyncio.Semaphore(50)
-        async with sem:
+        if self._container:
+            return
+
+        await acquire_lifecycle_lease()
+        self._lease_acquired = True
+        try:
             self._docker = aiodocker.Docker()
 
             self.workspace_dir = tempfile.mkdtemp(prefix="ctf-workspace-")
@@ -129,24 +201,20 @@ class DockerSandbox:
                 "WorkingDir": "/challenge",
                 "Tty": False,
                 "Labels": {CONTAINER_LABEL: "true"},
-                "HostConfig": {
-                    "Binds": binds,
-                    "ExtraHosts": ["host.docker.internal:host-gateway"],
-                    "CapAdd": ["SYS_ADMIN", "SYS_PTRACE"],
-                    "SecurityOpt": ["seccomp=unconfined"],
-                    "Devices": [{"PathOnHost": "/dev/loop-control", "PathInContainer": "/dev/loop-control", "CgroupPermissions": "rwm"}],
-                    "Memory": self._parse_memory_limit(),
-                    "NanoCpus": int(2 * 1e9),
-                },
+                "HostConfig": self._host_config(binds),
             }
 
             self._container = await self._docker.containers.create(config)
             await self._container.start()
             await _track_start()
+            self._tracked_active = True
 
             info = await self._container.show()
             short_id = info["Id"][:12]
             logger.info("Sandbox started: %s", short_id)
+        except BaseException:
+            await self._cleanup(release_lease=True)
+            raise
 
     async def exec(self, command: str, timeout_s: int = 300) -> ExecResult:
         if not self._container:
@@ -269,14 +337,17 @@ class DockerSandbox:
         Path(host_path).parent.mkdir(parents=True, exist_ok=True)
         Path(host_path).write_bytes(data)
 
-    async def stop(self) -> None:
+    async def _cleanup(self, *, release_lease: bool) -> None:
         if self._container:
             try:
                 await self._container.delete(force=True)
             except Exception:
                 pass
             self._container = None
+
+        if self._tracked_active:
             await _track_stop()
+            self._tracked_active = False
 
         if self._docker:
             try:
@@ -292,4 +363,34 @@ class DockerSandbox:
             except Exception:
                 pass
             self.workspace_dir = ""
+
+        if release_lease and self._lease_acquired:
+            release_lifecycle_lease()
+            self._lease_acquired = False
+
+    async def stop(self) -> None:
+        await self._cleanup(release_lease=True)
         logger.info("Sandbox stopped")
+
+
+def resolve_sandbox_profile(
+    category: str,
+    tags: list[str] | tuple[str, ...] = (),
+    configured: str = "auto",
+) -> str:
+    """Resolve the least-privileged profile from explicit config and challenge facts."""
+    if configured != "auto":
+        if configured not in SANDBOX_PROFILES:
+            raise ValueError(f"Unknown sandbox security profile: {configured}")
+        return configured
+
+    normalized_tags = {tag.strip().lower() for tag in tags}
+    if normalized_tags & {"nested", "nested-container", "docker-in-docker"}:
+        return "nested"
+
+    normalized_category = category.strip().lower()
+    if normalized_category in {"pwn", "reverse", "reversing", "re", "binary"}:
+        return "debug"
+    if normalized_category in {"forensics", "forensic"}:
+        return "forensics"
+    return "standard"

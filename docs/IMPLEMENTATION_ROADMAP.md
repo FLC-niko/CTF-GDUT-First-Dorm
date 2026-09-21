@@ -73,6 +73,8 @@
 
 ## M4：资源、安全与跨平台 worker
 
+> 进度（2026-09-21）：容器全生命周期并发租约（`acquire_lifecycle_lease` / `release_lifecycle_lease`）、资源限制（4G/2CPU/512PIDs）、最小特权 security profiles（`standard`/`debug`/`forensics`/`nested`）已落地。跨平台 `WorkerRegistry` 与 SSH `RemoteDockerSandbox` 已支持自动化题目附件打包同步、远程执行与安全清理。真实 VM 103（`dockers` 节点，Ubuntu x86_64 16核 32GB）已完成 6.84GB 全量 `ctf-sandbox:amd64` 构建，全套工具链自检与跨平台远程沙箱集成测试（`test_remote_sandbox_integration.py`）100% 验收通过。
+
 - 修正 semaphore：当前只限制启动瞬间，必须实现容器生命周期级并发令牌并在异常/取消后释放。
 - 资源限制按环境配置：Windows/Ubuntu x86 worker 先从 2–3 个容器压测；Mac M1 Pro 16GB 先从 1–2 个容器开始；单容器内存由任务/环境决定，不沿用 16g 默认。
 - 限制容器权限、挂载、出站目标；确需 ptrace/嵌套容器的题型按能力启用，避免所有容器默认 `SYS_ADMIN + seccomp=unconfined`。审查 `/dev/loop-control`、`host.docker.internal` 的必要性。

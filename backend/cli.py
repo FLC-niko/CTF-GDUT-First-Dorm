@@ -70,7 +70,7 @@ def _setup_logging(verbose: bool = False) -> None:
 )
 @click.option("--ctfd-url", default=None, help="CTFd 地址，优先于 .env 配置")
 @click.option("--ctfd-token", default=None, help="CTFd API 令牌，优先于 .env 配置")
-@click.option("--image", default="ctf-sandbox", help="Docker 沙箱镜像名称")
+@click.option("--image", default=None, help="本地 Docker 沙箱镜像；默认读取环境配置")
 @click.option("--models", multiple=True, help="模型规格，可重复传入；默认使用全部已配置模型")
 @click.option("--challenge", default=None, help="只求解单个本地题目目录")
 @click.option("--challenges-dir", default="challenges", help="题目根目录")
@@ -87,6 +87,12 @@ def _setup_logging(verbose: bool = False) -> None:
     help="协调器后端；azure 表示只走 .env 的 API 总控，none 表示无总控整场模式",
 )
 @click.option("--max-challenges", default=10, type=int, help="最大并发题目数")
+@click.option(
+    "--max-containers",
+    default=None,
+    type=click.IntRange(min=1),
+    help="本进程最大存活沙箱数；默认读取 MAX_CONCURRENT_CONTAINERS",
+)
 @click.option(
     "--all-solved-policy",
     default=None,
@@ -121,7 +127,7 @@ def main(
     lingxu_cookie_file: Path | None,
     ctfd_url: str | None,
     ctfd_token: str | None,
-    image: str,
+    image: str | None,
     models: tuple[str, ...],
     challenge: str | None,
     challenges_dir: str,
@@ -129,6 +135,7 @@ def main(
     coordinator_model: str | None,
     coordinator: str,
     max_challenges: int,
+    max_containers: int | None,
     all_solved_policy: AllSolvedPolicy | None,
     all_solved_idle_seconds: int | None,
     writeup_mode: WriteupMode | None,
@@ -142,7 +149,11 @@ def main(
     """
     _setup_logging(verbose)
 
-    settings_kwargs: dict[str, object] = {"sandbox_image": image}
+    settings_kwargs: dict[str, object] = {}
+    if image is not None:
+        settings_kwargs["sandbox_image"] = image
+    if max_containers is not None:
+        settings_kwargs["max_concurrent_containers"] = max_containers
     if all_solved_policy is not None:
         settings_kwargs["all_solved_policy"] = all_solved_policy
     if all_solved_idle_seconds is not None:
@@ -195,6 +206,7 @@ def main(
     console.print(f"  Models: {', '.join(model_specs)}")
     console.print(f"  Image: {settings.sandbox_image}")
     console.print(f"  Max challenges: {max_challenges}")
+    console.print(f"  Max live containers: {settings.max_concurrent_containers}")
     console.print(f"  All-solved policy: {settings.all_solved_policy}")
     if settings.all_solved_policy == "idle":
         console.print(f"  Idle timeout: {settings.all_solved_idle_seconds} seconds")
@@ -235,8 +247,7 @@ async def _run_single(
     from backend.sandbox import cleanup_orphan_containers, configure_semaphore
     from backend.solve_lifecycle import finalize_swarm_result
 
-    max_containers = max_challenges * len(model_specs)
-    configure_semaphore(max_containers)
+    configure_semaphore(settings.max_concurrent_containers)
     await cleanup_orphan_containers()
 
     challenge_path = Path(challenge_dir)
@@ -313,8 +324,7 @@ async def _run_coordinator(
     """Run the full coordinator (continuous until Ctrl+C)."""
     from backend.sandbox import cleanup_orphan_containers, configure_semaphore
 
-    max_containers = max_challenges * len(model_specs)
-    configure_semaphore(max_containers)
+    configure_semaphore(settings.max_concurrent_containers)
     await cleanup_orphan_containers()
     label = "none/headless" if coordinator_backend == "none" else coordinator_backend
     console.print(f"[bold]Starting coordinator ({label}, Ctrl+C to stop)...[/bold]\n")

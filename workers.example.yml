@@ -1,0 +1,29 @@
+version: 1
+
+# Credentials are deliberately forbidden here. Configure SSH host aliases,
+# ssh-agent, or ssh_identity_file outside the repository.
+# `arch` is the Docker image architecture. `native_arch` is the worker hardware
+# architecture, so an amd64 image on Apple Silicon must declare native_arch:
+# arm64 and remains distinguishable from native x86-64 Linux.
+workers:
+  - name: local-controller
+    transport: local
+    os: linux
+    arch: arm64
+    native_arch: arm64
+    image: ctf-sandbox:arm64
+    max_concurrency: 1
+    security_profiles: [standard, debug, forensics]
+
+  - name: native-amd64
+    transport: ssh
+    os: linux
+    arch: amd64
+    native_arch: amd64
+    image: ctf-sandbox:amd64
+    max_concurrency: 2
+    security_profiles: [standard, debug, forensics, nested]
+    ssh_host: ctf-amd64
+    ssh_user: ctf-worker
+    ssh_port: 22
+    remote_root: /srv/ctf-agent

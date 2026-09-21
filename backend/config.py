@@ -9,6 +9,8 @@ from pydantic_settings import BaseSettings
 
 AllSolvedPolicy = Literal["wait", "exit", "idle"]
 WriteupMode = Literal["off", "confirmed", "solved"]
+SandboxSecurityProfile = Literal["auto", "standard", "debug", "forensics", "nested"]
+SandboxNetworkMode = Literal["bridge", "none"]
 
 
 class Settings(BaseSettings):
@@ -63,7 +65,15 @@ class Settings(BaseSettings):
     sandbox_image: str = "ctf-sandbox"
     max_concurrent_challenges: int = 10
     max_attempts_per_challenge: int = 3
-    container_memory_limit: str = "16g"
+    container_memory_limit: str = "4g"
+    container_cpu_limit: float = 2.0
+    container_pids_limit: int = 512
+    sandbox_security_profile: SandboxSecurityProfile = "auto"
+    sandbox_network_mode: SandboxNetworkMode = "bridge"
+    sandbox_loop_device: str = ""
+    worker_config_file: str = ""
+    local_worker_arch: str = ""
+    max_concurrent_containers: int = 2
     all_solved_policy: AllSolvedPolicy = "wait"
     all_solved_idle_seconds: int = 300
     writeup_mode: WriteupMode = "off"
@@ -98,4 +108,10 @@ class Settings(BaseSettings):
                 raise ValueError(f"{prefix}_soft_token_budget cannot exceed hard budget")
         if self.provider_rate_limit_cooldown_seconds < 0:
             raise ValueError("provider_rate_limit_cooldown_seconds must be non-negative")
+        if self.container_cpu_limit <= 0:
+            raise ValueError("container_cpu_limit must be greater than 0")
+        if self.container_pids_limit <= 0:
+            raise ValueError("container_pids_limit must be greater than 0")
+        if self.max_concurrent_containers <= 0:
+            raise ValueError("max_concurrent_containers must be greater than 0")
         return self

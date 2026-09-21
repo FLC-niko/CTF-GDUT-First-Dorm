@@ -17,6 +17,7 @@ import click
 
 from backend.config import Settings
 from backend.providers import ModelSpec, get_provider_spec
+from backend.workers import WorkerTransport, registry_from_settings
 
 
 class DiagnosticStatus(StrEnum):
@@ -162,6 +163,41 @@ def collect_host_checks() -> list[DiagnosticCheck]:
     ]
 
 
+def collect_worker_checks(settings: Settings) -> list[DiagnosticCheck]:
+    """Validate worker routing without connecting to SSH or Docker endpoints."""
+    try:
+        registry = registry_from_settings(settings)
+    except (OSError, TypeError, ValueError) as exc:
+        return [
+            DiagnosticCheck(
+                category="worker",
+                name="registry",
+                status=DiagnosticStatus.ERROR,
+                detail=f"invalid worker configuration ({type(exc).__name__})",
+            )
+        ]
+
+    checks: list[DiagnosticCheck] = []
+    for worker in registry.workers:
+        transport_detail = worker.transport.value
+        if worker.transport is WorkerTransport.SSH:
+            transport_detail += "; endpoint=<configured>; auth=<external>"
+        checks.append(
+            DiagnosticCheck(
+                category="worker",
+                name=worker.name,
+                status=DiagnosticStatus.OK,
+                detail=(
+                    f"transport={transport_detail}; platform={worker.docker_platform}; "
+                    f"execution={'native' if worker.is_native else 'emulated'}; "
+                    f"image=<configured>; concurrency={worker.max_concurrency}; "
+                    f"profiles={','.join(sorted(worker.security_profiles))}"
+                ),
+            )
+        )
+    return checks
+
+
 def collect_docker_checks(
     settings: Settings,
     *,
@@ -262,6 +298,7 @@ def build_doctor_report(
         *collect_host_checks(),
         *collect_provider_checks(settings),
         *collect_model_checks(model_specs),
+        *collect_worker_checks(settings),
         *collect_docker_checks(settings),
     ]
 
