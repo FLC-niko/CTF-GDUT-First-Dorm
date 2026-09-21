@@ -1,5 +1,15 @@
 # Development changelog
 
+## 2026-09-21 — M5 Challenge management, triage, tiered dynamic scheduling and racing
+
+- Implemented `ChallengeManager` and explicit lifecycle state machine: `pending` -> `triaged` -> `solving` (fast/expert/racing) -> `solved` (candidate flag) -> `confirmed` (platform verified) / `failed` / `paused` / `skipped`.
+- Added atomic, secret-redacted state persistence and crash recovery (`StatePersistence` in `backend/persistence.py`), ensuring that in-flight challenges recover gracefully without repeating solved challenges or overwriting attachments.
+- Added `ChallengeTriager` with technical route identification, initial hypotheses, complexity scoring, and tier recommendations (Fast/Expert/Racing).
+- Added `TieredScheduler` enforcing program-governed solver allocation: Fast solvers use lightweight models on easy/warmup challenges; Expert solvers tackle hard challenges; Racing solvers explore concurrently across different model families (GPT, Gemini, DeepSeek) on bottlenecked challenges.
+- Integrated `ChallengeManager` and `TieredScheduler` into `CoordinatorDeps`, `CoordinatorLoop`, and `finalize_swarm_result`, separating candidate flags from platform confirmation.
+- Added test coverage: `tests/test_challenge_manager.py`, `tests/test_triage_and_scheduler.py`, and `tests/test_tiered_coordinator_integration.py`.
+- Verification with CPython 3.14.7: `268 passed, 4 skipped, 1 warning`; `ruff check backend tests` and `git diff --check` passed.
+
 ## 2026-09-21 — M4 sandbox lifecycle, security profiles, and remote worker routing
 
 - Replaced start-only semaphore with full container lifecycle leases (`acquire_lifecycle_lease` / `release_lifecycle_lease`) ensuring limits hold across the entire lifetime of a container and release safely on errors and cancellations.

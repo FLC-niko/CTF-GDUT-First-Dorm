@@ -86,6 +86,8 @@
 
 ## M5：调度与恢复
 
+> 进度（2026-09-21）：已实现 `ChallengeManager` 题目状态机、`StatePersistence` 原子磁盘持久化与恢复、`ChallengeTriager` 初评及 `TieredScheduler`（Fast/Expert/Racing）分级派发。在多题端到端集成测试中验证了从初筛、失败升级、跨家族 Racing 到候选 Flag 隔离与崩溃无损恢复。
+
 - 现有 poller/coordinator/policy/working memory 能力优先复用；新增跨题队列与执行状态，不另造整套 Agent 运行时。
 - 题目状态 `pending/triaged/solving/paused/solved/confirmed/failed`；分清候选 Flag 和平台已确认提交。
 - 快速模型做初步分类，给依据与不确定性；不要把模型置信度当校准后的成功概率。

@@ -161,4 +161,14 @@ async def finalize_swarm_result(
         record["writeup_error"] = ""
 
     deps.results[challenge_name] = record
+
+    manager = getattr(deps, "challenge_manager", None)
+    if manager:
+        if confirmed:
+            manager.record_confirmed_flag(challenge_name, result.flag or "")
+        elif result.status in (FLAG_FOUND, FLAG_CANDIDATE) and result.flag:
+            manager.record_candidate_flag(challenge_name, result.flag, result.model_spec)
+        else:
+            manager.record_failure(challenge_name, result.status)
+
     return record

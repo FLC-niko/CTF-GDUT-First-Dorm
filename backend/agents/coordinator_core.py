@@ -227,13 +227,28 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
 
     from backend.agents.swarm import ChallengeSwarm
 
+    models_to_run = list(deps.model_specs)
+    manager = getattr(deps, "challenge_manager", None)
+    scheduler = getattr(deps, "scheduler", None)
+    if manager and scheduler:
+        entry = manager.register_challenge(deps.challenge_dirs[challenge_name], meta)
+        if entry.status.value == "pending":
+            from backend.triage import ChallengeTriager
+
+            triager = ChallengeTriager()
+            distfiles_dir = Path(deps.challenge_dirs[challenge_name]) / "distfiles"
+            names = [f.name for f in distfiles_dir.iterdir()] if distfiles_dir.is_dir() else []
+            triage_report = triager.heuristic_triage(meta, distfile_names=names)
+            manager.record_triage(challenge_name, triage_report)
+        models_to_run = scheduler.select_models(entry)
+
     swarm = ChallengeSwarm(
         challenge_dir=deps.challenge_dirs[challenge_name],
         meta=meta,
         ctfd=deps.ctfd,
         cost_tracker=deps.cost_tracker,
         settings=deps.settings,
-        model_specs=deps.model_specs,
+        model_specs=models_to_run,
         no_submit=deps.no_submit,
         coordinator_inbox=deps.coordinator_inbox,
         provider_runtime=deps.provider_runtime,

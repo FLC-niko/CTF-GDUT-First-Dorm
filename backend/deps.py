@@ -74,6 +74,9 @@ class CoordinatorDeps:
     trace_pending_lines: dict[str, bytes] = field(default_factory=dict)
     trace_file_tokens: dict[str, tuple[int, int]] = field(default_factory=dict)
 
+    challenge_manager: Any = None
+    scheduler: Any = None
+
     def __post_init__(self) -> None:
         if self.policy_engine is None:
             self.policy_engine = PolicyEngine(
@@ -83,3 +86,18 @@ class CoordinatorDeps:
             )
         if self.provider_runtime is None:
             self.provider_runtime = ProviderRuntimeGovernor.from_settings(self.settings)
+        if self.challenge_manager is None:
+            from backend.challenge_manager import ChallengeManager
+            from backend.persistence import StatePersistence
+
+            state_file = getattr(self.settings, "state_file", "") or "competition_state.json"
+            persistence = StatePersistence(state_file)
+            self.challenge_manager = ChallengeManager(
+                persistence=persistence,
+                max_concurrent_challenges=self.max_concurrent_challenges,
+            )
+        if self.scheduler is None:
+            from backend.scheduler import TieredModelConfig, TieredScheduler
+
+            tiered_config = TieredModelConfig.from_settings(self.settings)
+            self.scheduler = TieredScheduler(tiered_config)
