@@ -266,11 +266,49 @@ def collect_docker_checks(
             ],
             capture_output=True,
             text=True,
-            timeout=5,
+            # Large Docker Desktop images can take several seconds to hydrate
+            # metadata even when they are already present locally.
+            timeout=30,
             check=False,
         )
     except OSError, subprocess.TimeoutExpired:
         image = None
+
+    # Docker Desktop can occasionally run an image by tag while `image inspect
+    # <tag>` reports it missing during metadata hydration. Resolve the immutable
+    # local ID with a read-only listing and inspect that ID before reporting a
+    # false missing result.
+    if image is None or image.returncode != 0:
+        try:
+            image_ids = run(
+                [docker, "image", "ls", "--quiet", "--no-trunc", settings.sandbox_image],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            image_id = (
+                image_ids.stdout.splitlines()[0].strip()
+                if image_ids.returncode == 0 and image_ids.stdout.strip()
+                else ""
+            )
+            if image_id:
+                image = run(
+                    [
+                        docker,
+                        "image",
+                        "inspect",
+                        image_id,
+                        "--format",
+                        "{{.Os}}/{{.Architecture}}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+        except OSError, subprocess.TimeoutExpired:
+            image = None
 
     if image is not None and image.returncode == 0:
         image_detail = image.stdout.strip() or "present (architecture unavailable)"

@@ -72,9 +72,11 @@ def test_provider_checks_reject_url_userinfo_without_echoing_it() -> None:
 
 def test_docker_checks_use_read_only_fixed_commands() -> None:
     commands: list[list[str]] = []
+    timeouts: list[int] = []
 
     def fake_run(command, **kwargs):
         commands.append(command)
+        timeouts.append(kwargs["timeout"])
         if command[1] == "version":
             return _Completed(0, "linux/amd64\n")
         return _Completed(0, "linux/amd64\n")
@@ -98,6 +100,47 @@ def test_docker_checks_use_read_only_fixed_commands() -> None:
             "image",
             "inspect",
             "ctf-sandbox:amd64",
+            "--format",
+            "{{.Os}}/{{.Architecture}}",
+        ],
+    ]
+    assert timeouts == [5, 30]
+
+
+def test_docker_checks_fall_back_to_image_id_when_tag_inspect_fails() -> None:
+    commands: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(command)
+        if command[1] == "version":
+            return _Completed(0, "linux/arm64\n")
+        if command[1:3] == ["image", "ls"]:
+            return _Completed(0, "sha256:abc123\n")
+        if command[3] == "ctf-sandbox:arm64":
+            return _Completed(1, "")
+        return _Completed(0, "linux/arm64\n")
+
+    checks = collect_docker_checks(
+        _settings(sandbox_image="ctf-sandbox:arm64"),
+        which=lambda _: "/usr/local/bin/docker",
+        run=fake_run,
+    )
+
+    assert [check.status for check in checks] == [DiagnosticStatus.OK, DiagnosticStatus.OK]
+    assert commands[-2:] == [
+        [
+            "/usr/local/bin/docker",
+            "image",
+            "ls",
+            "--quiet",
+            "--no-trunc",
+            "ctf-sandbox:arm64",
+        ],
+        [
+            "/usr/local/bin/docker",
+            "image",
+            "inspect",
+            "sha256:abc123",
             "--format",
             "{{.Os}}/{{.Architecture}}",
         ],

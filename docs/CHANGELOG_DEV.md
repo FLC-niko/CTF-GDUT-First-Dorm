@@ -1,5 +1,19 @@
 # Development changelog
 
+## 2026-09-22 — Live OpenCode Go protocol acceptance and local provider setup
+
+- Added a local git-ignored, mode `0600` `.env` with redacted Doctor-visible CPA/OpenCode Go
+  configuration; no credential is present in tracked files or logs.
+- OpenCode Go `/models` returned HTTP 200 with 33 models. Real tool-call round trips passed for
+  Chat Completions, Anthropic Messages, and Responses (`1 passed` for each opt-in run).
+- CPA Bearer `/models` and Anthropic-compatible `x-api-key` Messages probes both returned HTTP 401;
+  the JSON response identified an invalid API key. CPA remains unaccepted pending a valid credential.
+- Increased Doctor's read-only Docker image-inspection timeout from 5 to 30 seconds because large
+  Docker Desktop images can require metadata hydration beyond five seconds. Added an image-ID
+  fallback for a Docker Desktop case where `docker run <tag>` succeeds but tag-based inspect fails.
+- Verification: baseline `280 passed, 4 skipped, 1 warning`; Doctor reports the local `linux/arm64`
+  daemon and sandbox image as OK; Ruff and `git diff --check` pass.
+
 ## 2026-09-22 — Runtime recovery and stage-evidence correction
 
 - Repaired the M5 runtime syntax blocker, removed hard-coded/model-name-based role selection,

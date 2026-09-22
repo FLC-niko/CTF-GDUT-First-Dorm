@@ -16,8 +16,8 @@ Hunting Blade 是基于 `ctf-agent` 的二开版本。在同一道题交给多�
 | M0：上游审计与基线 | **已完成** | 锁定 HuntingBlade 上游 SHA `f4cae4d0ed897ccf3645742dc719b3755ba1ae83`；确认可复用 Coordinator、Solver、Swarm、Sandbox、Policy Engine 和 Working Memory；保留上游许可证与架构 | 无；后续阶段继续在现有 Agent 运行时上增量开发 |
 | M0.5：Docker 沙箱基线 | **已完成** | Windows x64 上的原生 `linux/amd64` 构建/生命周期验收已通过；Apple Silicon 上的 `linux/arm64` 完整构建、关键工具 smoke 和真实 `DockerSandbox` 测试已通过 | ARM64 不代表可原生调试 x86-64 Pwn/Reverse；该类题仍需原生 `linux/amd64` worker |
 | M1：Provider Registry 与 Doctor | **已完成** | 显式 Provider/协议注册、精确模型 ID、脱敏离线 `ctf-doctor`、错误分类、配置验证和 fake transport 回归已完成 | Doctor 默认不请求 `/models`；真实模型发现和端点验收归入 M2/M3 |
-| M2：CPA 模型接入 | **代码/离线协议完成** | `cpa-responses` 与 `cpa-chat` adapter、Solver 接线、工具调用多轮回归、并发/预算/熔断和默认禁止付费 fallback 已完成 | 当前未配置 CPA endpoint/Key；真实 `/models`、GPT/Gemini 工具调用和从题面到候选 Flag 的 Docker 闭环尚未验收 |
-| M3：OpenCode Go 接入与额度治理 | **代码/离线协议完成** | `go-responses`、`go-chat`、`go-messages` 三协议 adapter；每 Solver 稳定独立 session；token usage、软/硬预算、429/配额熔断和候选 Flag/平台确认分离已完成 | 当前未配置 OpenCode Go Key；真实模型目录、订阅额度、至少一个模型的 CTF 工具闭环尚未验收 |
+| M2：CPA 模型接入 | **代码/离线协议完成，真实认证阻塞** | `cpa-responses` 与 `cpa-chat` adapter、Solver 接线、工具调用多轮回归、并发/预算/熔断和默认禁止付费 fallback 已完成 | 已对用户配置的公网端点实测 Bearer `/models` 与 Messages `x-api-key`，服务端均返回 HTTP 401 `Invalid API key`；需更新有效凭据后才能验收真实工具调用 |
+| M3：OpenCode Go 接入与额度治理 | **真实协议闭环已验收** | 真实 `/models` 返回 33 个模型；`go-chat`、`go-messages`、`go-responses` 三条路径均完成了“模型调用工具→工具结果回传→最终回答”真实往返 | 尚未执行历史 CTF 题 Benchmark、额度耗尽长跑和实际角色冻结；因此仍不按模型名称指定 Fast/Expert/Racing |
 | M4：资源、安全与跨平台 worker | **代码完成，验收待复核** | 容器生命周期租约、资源限制、安全 profile、Worker Registry、SSH 远程沙箱、附件同步与取消清理均有自动化测试 | 历史记录包含 Mac arm64 和远程 amd64 验收，但临时服务器已不是长期拓扑；比赛前必须在实际 worker 上重跑完整镜像与负载验收 |
 | M5：题目管理、Triage 与动态调度 | **实现中** | `ChallengeManager` 状态机、可选原子持久化、崩溃恢复、Fast/Expert/Racing 显式角色配置、分层超时和失败升级已接线；不根据模型名称猜测角色 | Triage 当前仍是确定性启发式，未实现真实 LLM 初评；还需多题端到端调度与真实资源压测 |
 | M6：历史 CTF Benchmark | **未完成** | 有通用结果数据结构、汇总报告生成器和单元测试 | 原报告是硬编码合成数据，已移除；尚未执行真实历史题、模型对照、多次重复和成本校验，因此不存在可冻结的角色矩阵 |
@@ -25,11 +25,12 @@ Hunting Blade 是基于 `ctf-agent` 的二开版本。在同一道题交给多�
 
 当前验证基线：
 
-- CPython 3.14.7 / macOS arm64：`279 passed, 4 skipped, 1 warning`；真实 Provider 和远程 SSH 沙箱集成测试默认为 opt-in，不计入普通测试成功。
+- CPython 3.14.7 / macOS arm64：基线全量测试 `280 passed, 4 skipped, 1 warning`；真实 Provider 和远程 SSH 沙箱集成测试默认为 opt-in，不计入普通测试成功。
+- OpenCode Go 真实 opt-in 验收：Chat Completions、Anthropic Messages、Responses 各 `1 passed`，均包含一次真实工具调用往返。CPA 当前为 HTTP 401，未验收成功。
 - 当前 Mac Docker Desktop 实测为 `linux/arm64`；现有 `ctf-sandbox:arm64` 通过真实挂载、执行、取消与清理集成测试：`1 passed in 2.88s`。
 - 历史 Docker 验收证据保留在 `docs/ARCHITECTURE_AUDIT.md` 和 `docs/CHANGELOG_DEV.md`，但不代表当前比赛拓扑已复验。
 - `ruff check backend tests scripts` 和 `git diff --check` 必须在每个提交前通过。
-- 真实 CPA/OpenCode Go 验收必须显式设置 `RUN_PROVIDER_LIVE=1`；当前没有也不会伪造成功结果。
+- 真实 CPA/OpenCode Go 验收必须显式设置 `RUN_PROVIDER_LIVE=1`；普通测试不会产生模型请求。
 
 更详细的阶段出口、实测证据和已知风险见 [实施路线图](docs/IMPLEMENTATION_ROADMAP.md)、[架构审计](docs/ARCHITECTURE_AUDIT.md)、[Provider 协议证据](docs/PROVIDER_PROTOCOLS.md) 与 [开发记录](docs/CHANGELOG_DEV.md)。
 
