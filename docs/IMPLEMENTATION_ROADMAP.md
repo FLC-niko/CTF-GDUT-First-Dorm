@@ -73,7 +73,7 @@
 
 ## M4：资源、安全与跨平台 worker
 
-> 进度（2026-09-21）：容器全生命周期并发租约（`acquire_lifecycle_lease` / `release_lifecycle_lease`）、资源限制（4G/2CPU/512PIDs）、最小特权 security profiles（`standard`/`debug`/`forensics`/`nested`）已落地。跨平台 `WorkerRegistry` 与 SSH `RemoteDockerSandbox` 已支持自动化题目附件打包同步、远程执行与安全清理。真实 VM 103（`dockers` 节点，Ubuntu x86_64 16核 32GB）已完成 6.84GB 全量 `ctf-sandbox:amd64` 构建，全套工具链自检与跨平台远程沙箱集成测试（`test_remote_sandbox_integration.py`）100% 验收通过。
+> 状态校正（2026-09-22）：容器全生命周期租约、资源限制、安全 profile、`WorkerRegistry`、SSH `RemoteDockerSandbox`、附件同步与清理已落地并有自动化测试。历史验收记录保留，但临时远程节点不属于当前稳定比赛拓扑，完整工具镜像和负载能力必须在最终设备上复验。
 
 - 修正 semaphore：当前只限制启动瞬间，必须实现容器生命周期级并发令牌并在异常/取消后释放。
 - 资源限制按环境配置：Windows/Ubuntu x86 worker 先从 2–3 个容器压测；Mac M1 Pro 16GB 先从 1–2 个容器开始；单容器内存由任务/环境决定，不沿用 16g 默认。
@@ -86,7 +86,7 @@
 
 ## M5：调度与恢复
 
-> 进度（2026-09-21）：已实现 `ChallengeManager` 题目状态机、`StatePersistence` 原子磁盘持久化与恢复、`ChallengeTriager` 初评及 `TieredScheduler`（Fast/Expert/Racing）分级派发。在多题端到端集成测试中验证了从初筛、失败升级、跨家族 Racing 到候选 Flag 隔离与崩溃无损恢复。
+> 进度（2026-09-22）：`ChallengeManager`、可选 `StatePersistence`、启发式 `ChallengeTriager`、显式 Fast/Expert/Racing 角色、分层超时和失败升级已接线。已移除硬编码模型和模型名称启发式，并补充状态隔离、取消和超时回归。LLM triage、本地 5 题端到端队列验收和真实资源竞争仍未完成。
 
 - 现有 poller/coordinator/policy/working memory 能力优先复用；新增跨题队列与执行状态，不另造整套 Agent 运行时。
 - 题目状态 `pending/triaged/solving/paused/solved/confirmed/failed`；分清候选 Flag 和平台已确认提交。
@@ -99,7 +99,7 @@
 
 ## M6：基准评测
 
-> 进度（2026-09-21）：构建了覆盖 Web/Crypto/Misc/Pwn/Reverse 的标准 5 题本地复现基准套件（`benchmark_suites/standard_5/`），实现了 `BenchmarkRunner` 评测引擎。完成 Fast/Expert/Racing 模式在 Time-to-Flag、工具准确率、Token 成本及边际 Racing 收益（实测 33.3% 增量覆盖）的实测评估，产出报告 `docs/BENCHMARK_REPORT.md`，明确了模型角色分工矩阵。
+> 状态校正（2026-09-22）：只有结果数据结构、汇总器和合成 fixture 单元测试。原脚本直接写死解题、耗时、Token 和成本，不构成实测；该报告已移除，脚本改为只接受显式标注 `provenance=measured` 的外部运行记录。M6 未完成。
 
 - 以公开可复现赛题组成 Web/Crypto/Misc/Pwn/Reverse 基准；每题固定时间、工具、网络条件、初始提示，未解题不能提前喂 writeup。
 - 先测快速模型，再强模型，然后双模型 Racing：分别记录有效 Flag、Time-to-Flag、工具正确率、消耗、互补解题覆盖率。
@@ -110,7 +110,7 @@
 
 ## M7：长跑、故障演练与冻结
 
-> 进度（2026-09-21）：已实现 `CompetitionSimulator` 与 `FaultInjector`，在 4 小时模拟长跑和各类故障注入（429 速率限制冷却、容器 SIGKILL/OOM 异常退出租约回收、网络中断自愈与进程重启无损恢复）测试中达成 100% 弹性恢复率。输出了正式比赛冻结配置 `competition_profile.yml` 与实战运行指引 `docs/COMPETITION_GUIDE.md`。全阶段 M0~M7 目标全部达成。
+> 状态校正（2026-09-22）：当前只有不超过 1 秒的加速状态恢复/租约回收单元测试，不是四小时实时长跑，也未覆盖完整故障矩阵。`competition_profile.yml` 和运行指南已改为通用模板。M7 未完成。
 
 - 检查比赛规程中 AI/自动提交/爬取/访问范围要求；未确认的能力保持禁用。
 - 单题→5 题→全场模拟，做四小时长跑；注入 429、断网、Docker 退出、CPA 无额度、Agent 卡死、取消等故障。

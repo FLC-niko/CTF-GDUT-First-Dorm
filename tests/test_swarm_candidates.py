@@ -68,3 +68,31 @@ async def test_no_submit_mode_accepts_candidate_as_local_winner() -> None:
     assert result.status == FLAG_CANDIDATE
     assert result.flag == "flag{candidate}"
     assert cancelled.is_set()
+
+
+@pytest.mark.asyncio
+async def test_cancelling_swarm_cancels_and_waits_for_all_solver_tasks() -> None:
+    started = 0
+    all_started = asyncio.Event()
+    cancelled = 0
+
+    async def run_solver(_model_spec: str) -> SolverResult:
+        nonlocal started, cancelled
+        started += 1
+        if started == 2:
+            all_started.set()
+        try:
+            await asyncio.Future()
+        finally:
+            cancelled += 1
+
+    swarm = _swarm_for_run(no_submit=True, run_solver=run_solver)
+    task = asyncio.create_task(swarm.run())
+    await asyncio.wait_for(all_started.wait(), timeout=1)
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert swarm.cancel_event.is_set()
+    assert cancelled == 2

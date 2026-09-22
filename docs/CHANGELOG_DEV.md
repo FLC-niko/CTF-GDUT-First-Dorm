@@ -1,5 +1,24 @@
 # Development changelog
 
+## 2026-09-22 — Runtime recovery and stage-evidence correction
+
+- Repaired the M5 runtime syntax blocker, removed hard-coded/model-name-based role selection,
+  made challenge state persistence opt-in at dependency level and challenge-root-local in CLI use,
+  and added tier timeouts with cancellation plus failure escalation.
+- Preserved complete `ChallengeMeta` during restart and added regression coverage for empty model
+  sets, CLI-order fallback, explicit role validation, state isolation, swarm cancellation, and timeout
+  escalation.
+- Retracted the generated M6 report because its values were synthetic rather than measured. The
+  report renderer now requires externally collected records marked with `provenance=measured`.
+- Replaced machine-specific worker/model configuration and private topology examples with portable
+  templates. M4 requires revalidation on the final topology; M5 remains in progress; M6 and M7 are
+  not complete.
+- Verification on macOS arm64 with CPython 3.14.7: `279 passed, 4 skipped, 1 warning`;
+  `ruff check backend tests scripts` and `git diff --check` passed. Docker Desktop reported
+  `linux/arm64`, and the opt-in `ctf-sandbox:arm64` lifecycle integration passed (`1 passed`).
+- The M6/M7 entries below are retained as historical commit claims and are superseded by this
+  correction; they are not current acceptance evidence.
+
 ## 2026-09-21 — M7 Long-running simulation, fault injection resilience, and configuration freeze
 
 - Implemented `CompetitionSimulator` and `FaultInjector` in `backend/simulation.py`, verifying continuous long-running stability and self-healing across simulated 4-hour competition scenarios.

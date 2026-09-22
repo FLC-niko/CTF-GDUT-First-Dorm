@@ -162,10 +162,11 @@ def retire_finished_swarms(deps: CoordinatorDeps) -> list[str]:
             "no_result",
             "skipped",
         }
-        is_terminal_runtime = (
-            runtime_swarm is not None
-            and runtime_swarm.status in {"finished", "cancelled", "error"}
-        )
+        is_terminal_runtime = runtime_swarm is not None and runtime_swarm.status in {
+            "finished",
+            "cancelled",
+            "error",
+        }
         if task is not None and not task.done():
             continue
         if not (
@@ -203,7 +204,9 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
         except NotImplementedError:
             return f"Challenge '{challenge_name}' materialization is not available for this platform yet"
         deps.challenge_dirs[challenge_name] = ch_dir
-        deps.challenge_metas[challenge_name] = ChallengeMeta.from_yaml(Path(ch_dir) / "metadata.yml")
+        deps.challenge_metas[challenge_name] = ChallengeMeta.from_yaml(
+            Path(ch_dir) / "metadata.yml"
+        )
 
     meta = deps.challenge_metas.get(challenge_name)
     if meta is None:
@@ -211,7 +214,11 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
         deps.challenge_metas[challenge_name] = meta
     if meta.unsupported_reason:
         _record_skipped_challenge(deps, challenge_name, meta.unsupported_reason)
-        logger.info("challenge_skipped_unsupported name=%s reason=%s", challenge_name, meta.unsupported_reason)
+        logger.info(
+            "challenge_skipped_unsupported name=%s reason=%s",
+            challenge_name,
+            meta.unsupported_reason,
+        )
         return f"Challenge '{challenge_name}' skipped: {meta.unsupported_reason}"
     if _needs_prepare(meta):
         try:
@@ -222,12 +229,17 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
         deps.challenge_metas[challenge_name] = meta
         if meta.unsupported_reason:
             _record_skipped_challenge(deps, challenge_name, meta.unsupported_reason)
-            logger.info("challenge_skipped_unsupported name=%s reason=%s", challenge_name, meta.unsupported_reason)
+            logger.info(
+                "challenge_skipped_unsupported name=%s reason=%s",
+                challenge_name,
+                meta.unsupported_reason,
+            )
             return f"Challenge '{challenge_name}' skipped: {meta.unsupported_reason}"
 
     from backend.agents.swarm import ChallengeSwarm
 
     models_to_run = list(deps.model_specs)
+    timeout_s: int | None = None
     manager = getattr(deps, "challenge_manager", None)
     scheduler = getattr(deps, "scheduler", None)
     if manager and scheduler:
@@ -241,6 +253,8 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
             triage_report = triager.heuristic_triage(meta, distfile_names=names)
             manager.record_triage(challenge_name, triage_report)
         models_to_run = scheduler.select_models(entry)
+        timeout_s = scheduler.get_timeout_s(entry)
+        manager.record_solving(challenge_name, models_to_run)
 
     swarm = ChallengeSwarm(
         challenge_dir=deps.challenge_dirs[challenge_name],
@@ -248,7 +262,6 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
         ctfd=deps.ctfd,
         cost_tracker=deps.cost_tracker,
         settings=deps.settings,
-        model_specs=deps.model_specs,
         model_specs=models_to_run,
         no_submit=deps.no_submit,
         coordinator_inbox=deps.coordinator_inbox,
@@ -257,7 +270,20 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
     deps.swarms[challenge_name] = swarm
 
     async def _run_and_cleanup() -> None:
-        result = await swarm.run()
+        try:
+            if timeout_s is None:
+                result = await swarm.run()
+            else:
+                async with asyncio.timeout(timeout_s):
+                    result = await swarm.run()
+        except TimeoutError:
+            swarm.kill()
+            logger.warning(
+                "challenge_timeout name=%s tier_timeout_s=%s",
+                challenge_name,
+                timeout_s,
+            )
+            result = None
         await finalize_swarm_result(
             deps=deps,
             challenge_name=challenge_name,
@@ -269,7 +295,7 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
 
     task = asyncio.create_task(_run_and_cleanup(), name=f"swarm-{challenge_name}")
     deps.swarm_tasks[challenge_name] = task
-    return f"Swarm spawned for {challenge_name} with {len(deps.model_specs)} models"
+    return f"Swarm spawned for {challenge_name} with {len(models_to_run)} models"
 
 
 async def do_check_swarm_status(deps: CoordinatorDeps, challenge_name: str) -> str:
@@ -298,7 +324,9 @@ async def do_kill_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
     return f"Swarm for {challenge_name} cancelled"
 
 
-async def do_bump_agent(deps: CoordinatorDeps, challenge_name: str, model_spec: str, insights: str) -> str:
+async def do_bump_agent(
+    deps: CoordinatorDeps, challenge_name: str, model_spec: str, insights: str
+) -> str:
     swarm = deps.swarms.get(challenge_name)
     if not swarm:
         return f"No swarm running for {challenge_name}"
@@ -313,7 +341,9 @@ async def do_bump_agent(deps: CoordinatorDeps, challenge_name: str, model_spec: 
     return f"Bumped {model_spec} on {challenge_name}"
 
 
-async def do_read_solver_trace(deps: CoordinatorDeps, challenge_name: str, model_spec: str, last_n: int = 20) -> str:
+async def do_read_solver_trace(
+    deps: CoordinatorDeps, challenge_name: str, model_spec: str, last_n: int = 20
+) -> str:
     """Read the last N trace events from a solver's JSONL log."""
     swarm = deps.swarms.get(challenge_name)
     if not swarm:
@@ -335,14 +365,22 @@ async def do_read_solver_trace(deps: CoordinatorDeps, challenge_name: str, model
                 t = d.get("type", "?")
                 if t == "tool_call":
                     args_str = str(d.get("args", ""))[:100]
-                    summary.append(f"step {d.get('step','?')} CALL {d.get('tool','?')}: {args_str}")
+                    summary.append(
+                        f"step {d.get('step', '?')} CALL {d.get('tool', '?')}: {args_str}"
+                    )
                 elif t == "tool_result":
                     result_str = str(d.get("result", ""))[:100]
-                    summary.append(f"step {d.get('step','?')} RESULT {d.get('tool','?')}: {result_str}")
+                    summary.append(
+                        f"step {d.get('step', '?')} RESULT {d.get('tool', '?')}: {result_str}"
+                    )
                 elif t in ("finish", "error", "bump", "turn_failed"):
-                    summary.append(f"** {t}: {json.dumps({k:v for k,v in d.items() if k != 'ts'})}")
+                    summary.append(
+                        f"** {t}: {json.dumps({k: v for k, v in d.items() if k != 'ts'})}"
+                    )
                 elif t == "usage":
-                    summary.append(f"usage: in={d.get('input_tokens',0)} out={d.get('output_tokens',0)} cost=${d.get('cost_usd',0):.4f}")
+                    summary.append(
+                        f"usage: in={d.get('input_tokens', 0)} out={d.get('output_tokens', 0)} cost=${d.get('cost_usd', 0):.4f}"
+                    )
                 else:
                     summary.append(f"{t}: {str(d)[:80]}")
             except Exception:

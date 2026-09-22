@@ -14,8 +14,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-from backend.prompts import ChallengeMeta
-
 logger = logging.getLogger(__name__)
 
 
@@ -127,16 +125,18 @@ class BenchmarkSuiteResult:
                 f"| `{label}` | {s.total_challenges} | {s.solved_count} | {s.solve_rate * 100:.1f}% | {s.avg_time_to_flag_s}s | {s.avg_tool_accuracy * 100:.1f}% | {s.total_tokens} |"
             )
 
-        lines.extend([
-            f"\n**Marginal Racing Coverage Benefit**: {self.marginal_racing_coverage * 100:.1f}%\n",
-            "## 2. Recommended Solver Role Matrix\n",
-            "- **Fast Solver (Warmup/初筛)**: Lightweight small models (`codex/gpt-5.4-mini` / `go-chat/qwen-2.5-coder-7b`), prioritizing low token usage and high tool invocation speed.",
-            "- **Expert Solver (Deep Reasoning/攻坚)**: Strong reasoning models (`codex/gpt-5.4` / `go-messages/deepseek-r1`), handling complex multi-step exploits.",
-            "- **Racing Solver (Cross-Family/瓶颈突破)**: Combining different model families (`Codex GPT` + `CPA Gemini` + `Go DeepSeek`), exploring orthogonal attack vectors when Expert stalls.",
-            "\n## 3. Individual Challenge Results\n",
-            "| Challenge | Category | Model | Mode | Solved | Time (s) | Tool Acc |",
-            "|-----------|----------|-------|------|--------|----------|----------|",
-        ])
+        lines.extend(
+            [
+                f"\n**Marginal Racing Coverage Benefit**: {self.marginal_racing_coverage * 100:.1f}%\n",
+                "## 2. Interpretation boundary\n",
+                "This report only summarizes the supplied run records. Solver roles must be "
+                "chosen from repeated benchmark evidence and explicit operator configuration; "
+                "they are not inferred from model names.",
+                "\n## 3. Individual Challenge Results\n",
+                "| Challenge | Category | Model | Mode | Solved | Time (s) | Tool Acc |",
+                "|-----------|----------|-------|------|--------|----------|----------|",
+            ]
+        )
         for t in self.tasks:
             status = "✅" if t.solved else "❌"
             lines.append(
@@ -153,7 +153,9 @@ class BenchmarkRunner:
         self.output_dir = Path(output_dir).resolve()
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def record_run(self, result: BenchmarkSuiteResult, report_name: str = "benchmark_report") -> Path:
+    def record_run(
+        self, result: BenchmarkSuiteResult, report_name: str = "benchmark_report"
+    ) -> Path:
         result.compute_summary()
         json_path = self.output_dir / f"{report_name}.json"
         md_path = self.output_dir / f"{report_name}.md"
@@ -168,4 +170,3 @@ class BenchmarkRunner:
         md_path.write_text(result.to_markdown(), encoding="utf-8")
         logger.info("Saved benchmark report to %s and %s", json_path, md_path)
         return md_path
-

@@ -90,14 +90,20 @@ class CoordinatorDeps:
             from backend.challenge_manager import ChallengeManager
             from backend.persistence import StatePersistence
 
-            state_file = getattr(self.settings, "state_file", "") or "competition_state.json"
-            persistence = StatePersistence(state_file)
+            state_file = str(getattr(self.settings, "competition_state_file", "") or "")
+            persistence = StatePersistence(state_file) if state_file else None
             self.challenge_manager = ChallengeManager(
                 persistence=persistence,
                 max_concurrent_challenges=self.max_concurrent_challenges,
+                max_attempts_per_challenge=int(
+                    getattr(self.settings, "max_attempts_per_challenge", 3)
+                ),
             )
         if self.scheduler is None:
             from backend.scheduler import TieredModelConfig, TieredScheduler
 
-            tiered_config = TieredModelConfig.from_settings(self.settings)
+            tiered_config = TieredModelConfig.from_settings(
+                self.settings,
+                self.model_specs,
+            )
             self.scheduler = TieredScheduler(tiered_config)

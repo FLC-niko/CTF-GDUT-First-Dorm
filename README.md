@@ -9,7 +9,7 @@ Hunting Blade 是基于 `ctf-agent` 的二开版本。在同一道题交给多�
 
 ## 开发阶段与完成情况
 
-> 状态截止 2026-09-21，当前开发分支为 `feat/cpa-go-routing`。阶段验收只记录真实执行过的结果；离线 fake transport 测试不等同于真实 Provider 调用。
+> 状态截止 2026-09-22，当前开发分支为 `feat/cpa-go-routing`。阶段验收只记录真实执行过的结果；离线 fake transport 测试不等同于真实 Provider 调用，加速时钟模拟也不等同于四小时实时长跑。
 
 | 阶段 | 状态 | 已完成 | 尚未完成 / 验收边界 |
 |------|------|----------|------------------------|
@@ -18,17 +18,17 @@ Hunting Blade 是基于 `ctf-agent` 的二开版本。在同一道题交给多�
 | M1：Provider Registry 与 Doctor | **已完成** | 显式 Provider/协议注册、精确模型 ID、脱敏离线 `ctf-doctor`、错误分类、配置验证和 fake transport 回归已完成 | Doctor 默认不请求 `/models`；真实模型发现和端点验收归入 M2/M3 |
 | M2：CPA 模型接入 | **代码/离线协议完成** | `cpa-responses` 与 `cpa-chat` adapter、Solver 接线、工具调用多轮回归、并发/预算/熔断和默认禁止付费 fallback 已完成 | 当前未配置 CPA endpoint/Key；真实 `/models`、GPT/Gemini 工具调用和从题面到候选 Flag 的 Docker 闭环尚未验收 |
 | M3：OpenCode Go 接入与额度治理 | **代码/离线协议完成** | `go-responses`、`go-chat`、`go-messages` 三协议 adapter；每 Solver 稳定独立 session；token usage、软/硬预算、429/配额熔断和候选 Flag/平台确认分离已完成 | 当前未配置 OpenCode Go Key；真实模型目录、订阅额度、至少一个模型的 CTF 工具闭环尚未验收 |
-| M4：资源、安全与跨平台 worker | **已完成** | 容器生命周期租约、资源治理（4G/2CPU/512PIDs）、最小特权安全 profile（standard/debug/forensics/nested）、跨平台 WorkerRegistry 与 SSH 远程沙箱流式附件同步已完成；Mac arm64 本地与 VM 103（Ubuntu 16核 32GB）原生 x86_64 真实集成测试 100% 通过 | 已实测 VM 103 6.84GB 全量镜像与工具链；远程 worker 使用纯密钥免密登录，不存凭证；生产环境支持按架构路由 Pwn/Reverse |
-| M5：题目管理、Triage 与动态调度 | **已完成** | `ChallengeManager` 状态机、原子磁盘持久化与恢复、`ChallengeTriager` 初评、`TieredScheduler`（Fast/Expert/Racing）分级调度、候选 Flag 与平台确认严格隔离已完成；本地多题流转与崩溃恢复集成测试通过 | 规则驱动调度，模型选择由实测 benchmark 与当前难度决定，不硬编码模型 |
-| M6：历史 CTF Benchmark | **已完成** | 标准 5 题全品类基准套件（Web/Crypto/Misc/Pwn/Reverse）、`BenchmarkRunner` 自动化评测引擎与评测报告（`docs/BENCHMARK_REPORT.md`）已建立；测出边际 Racing 覆盖率提升 33.3%，确定 Fast/Expert/Racing 角色分工矩阵 | 实测报告支持，不臆造模型指标；支持扩展私有历史赛题 |
-| M7：四小时模拟赛与配置冻结 | **已完成** | 4 小时长跑模拟引擎（`backend/simulation.py`）、429 限流恢复、容器崩溃租约回收、网络中断自愈与进程重启无损恢复测试通过（`tests/test_fault_injection.py`）；输出冻结配置 `competition_profile.yml` 与实战运行指引 `docs/COMPETITION_GUIDE.md` | M0 至 M7 全阶段工程目标全部达成，系统处于比赛准备就绪状态 |
+| M4：资源、安全与跨平台 worker | **代码完成，验收待复核** | 容器生命周期租约、资源限制、安全 profile、Worker Registry、SSH 远程沙箱、附件同步与取消清理均有自动化测试 | 历史记录包含 Mac arm64 和远程 amd64 验收，但临时服务器已不是长期拓扑；比赛前必须在实际 worker 上重跑完整镜像与负载验收 |
+| M5：题目管理、Triage 与动态调度 | **实现中** | `ChallengeManager` 状态机、可选原子持久化、崩溃恢复、Fast/Expert/Racing 显式角色配置、分层超时和失败升级已接线；不根据模型名称猜测角色 | Triage 当前仍是确定性启发式，未实现真实 LLM 初评；还需多题端到端调度与真实资源压测 |
+| M6：历史 CTF Benchmark | **未完成** | 有通用结果数据结构、汇总报告生成器和单元测试 | 原报告是硬编码合成数据，已移除；尚未执行真实历史题、模型对照、多次重复和成本校验，因此不存在可冻结的角色矩阵 |
+| M7：四小时模拟赛与配置冻结 | **未完成** | 有加速的状态恢复和局部故障单测试；`competition_profile.yml` 已改为无设备/无模型硬编码的模板 | 尚未完成四小时实时长跑、完整故障矩阵、实际比赛设备负载验收和最终配置冻结 |
 
 当前验证基线：
 
-- CPython 3.14.7 / macOS arm64：`273 passed, 4 skipped, 1 warning`；两个 Provider 真实 smoke、一个本地 Docker 集成测试和一个远程 SSH 沙箱集成测试默认为 opt-in。
-- `RUN_DOCKER_INTEGRATION=1` + `ctf-sandbox:arm64`：本地真实 `DockerSandbox` 挂载、执行、取消与清理测试 `1 passed`。
-- `RUN_REMOTE_DOCKER_INTEGRATION=1` + VM 103（`dockers` / `10.21.76.27`）：远程真实 `RemoteDockerSandbox` 附件打包同步、原生 `x86_64` 运行、双向读写与资源清理测试 `1 passed`。
-- `ruff check backend tests` 和 `git diff --check` 通过。
+- CPython 3.14.7 / macOS arm64：`279 passed, 4 skipped, 1 warning`；真实 Provider 和远程 SSH 沙箱集成测试默认为 opt-in，不计入普通测试成功。
+- 当前 Mac Docker Desktop 实测为 `linux/arm64`；现有 `ctf-sandbox:arm64` 通过真实挂载、执行、取消与清理集成测试：`1 passed in 2.88s`。
+- 历史 Docker 验收证据保留在 `docs/ARCHITECTURE_AUDIT.md` 和 `docs/CHANGELOG_DEV.md`，但不代表当前比赛拓扑已复验。
+- `ruff check backend tests scripts` 和 `git diff --check` 必须在每个提交前通过。
 - 真实 CPA/OpenCode Go 验收必须显式设置 `RUN_PROVIDER_LIVE=1`；当前没有也不会伪造成功结果。
 
 更详细的阶段出口、实测证据和已知风险见 [实施路线图](docs/IMPLEMENTATION_ROADMAP.md)、[架构审计](docs/ARCHITECTURE_AUDIT.md)、[Provider 协议证据](docs/PROVIDER_PROTOCOLS.md) 与 [开发记录](docs/CHANGELOG_DEV.md)。
@@ -225,8 +225,8 @@ CTFD_TOKEN=ctfd_your_api_token_here
 
 # OpenAI-compatible gateway
 OPENAI_API_KEY=sk-...
-OPENAI_BASE_URL=https://api.masterjie.eu.cc/v1
-AZURE_OPENAI_ENDPOINT=https://api.masterjie.eu.cc/v1
+OPENAI_BASE_URL=https://gateway.example.com/v1
+AZURE_OPENAI_ENDPOINT=https://gateway.example.com/v1
 AZURE_OPENAI_API_KEY=sk-...
 
 # Claude / Gemini / 其他 provider 按需填写
@@ -249,8 +249,8 @@ OPENCODE_GO_MESSAGES_BASE_URL=https://opencode.ai/zen/go
 
 # Lingxu Event CTF
 PLATFORM=lingxu-event-ctf
-PLATFORM_URL=https://ctf.yunyansec.com
-LINGXU_EVENT_ID=198
+PLATFORM_URL=https://ctf.example.com
+LINGXU_EVENT_ID=123
 LINGXU_COOKIE=sessionid=your_session_cookie
 ```
 

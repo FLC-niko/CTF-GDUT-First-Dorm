@@ -113,6 +113,9 @@ async def finalize_swarm_result(
     if result is None:
         record = _build_no_result_record()
         deps.results[challenge_name] = record
+        manager = getattr(deps, "challenge_manager", None)
+        if manager:
+            manager.record_failure(challenge_name, "no_result")
         return record
 
     released_key = _released_env_key(

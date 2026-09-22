@@ -1,68 +1,41 @@
-# Formal Competition Profile & Configuration Freeze
-# Version: 1.0 (Frozen 2026-09-21 for CTF Competition)
-
+# Competition profile template. Copy and adapt after M6/M7 acceptance.
+# Do not commit credentials, private addresses, or unverified model IDs.
 version: 1
+status: example-not-frozen
 
-# ── General Competition Rules & Safety ────────────────────────────────────────
 safety:
-  # Strictly false by default. Only set to true when rules explicitly authorize automated submission.
   auto_submit: false
   redact_secrets_in_logs: true
   candidate_flag_isolation: true
   allow_paid_api_fallback: false
 
-# ── Multi-Agent Solver Roles & Models ─────────────────────────────────────────
+# Model IDs are intentionally empty. Populate them from provider discovery and
+# benchmark evidence; do not infer roles from names such as "mini" or "pro".
 models:
-  # Fast Tier: Low token cost, high speed, warmup & triage validation
-  fast:
-    - codex/gpt-5.4-mini
-    - go-chat/qwen-2.5-coder-7b
+  fast: []
   fast_timeout_seconds: 300
-
-  # Expert Tier: Strong reasoning, deep static/dynamic exploitation
-  expert:
-    - codex/gpt-5.4
-    - go-messages/deepseek-r1
+  expert: []
   expert_timeout_seconds: 900
-
-  # Racing Tier: Cross-family exploration when single model stalls
-  racing:
-    - codex/gpt-5.4
-    - cpa-responses/gemini-2.5-pro
-    - go-messages/deepseek-r1
+  racing: []
   racing_timeout_seconds: 1800
 
-# ── Worker Topology & Execution Routing ───────────────────────────────────────
+# Worker topology belongs in a separate local worker config referenced through
+# WORKER_CONFIG_FILE. Use SSH aliases/keys, never passwords in YAML.
 workers:
-  # Local controller (Apple Silicon Mac arm64) for general CTF challenges
-  - name: local-mac-arm64
-    transport: local
-    os: linux
-    arch: arm64
-    native_arch: arm64
-    image: ctf-sandbox:arm64
-    max_concurrency: 2
-    security_profiles: [standard, debug, forensics]
+  config_file: ""
+  local_native_arch: ""
 
-  # Dedicated remote worker (VM 103 dockers 16-core 32GB) for native x86-64 binary analysis & pwn
-  - name: vm103-dockers-amd64
-    transport: ssh
-    os: linux
-    arch: amd64
-    native_arch: amd64
-    image: ctf-sandbox:amd64
-    max_concurrency: 4
-    security_profiles: [standard, debug, forensics, nested]
-    ssh_host: 10.21.76.27
-    ssh_user: topview
-    ssh_port: 22
-    remote_root: /tmp/ctf-agent
-
-# ── Container Resource & Security Governance ──────────────────────────────────
+# These conservative defaults can be overridden per host. A controller with
+# limited RAM should lower concurrency instead of hard-coding a machine type.
 sandbox:
+  image: ctf-sandbox
   memory_limit: 4g
   cpu_limit: 2.0
   pids_limit: 512
+  max_concurrent_containers: 2
   security_profile: auto
   network_mode: bridge
 
+state:
+  # Empty means the CLI chooses .ctf-agent-state.json beside the challenge root.
+  file: ""

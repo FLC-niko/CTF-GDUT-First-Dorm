@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from backend.challenge_manager import ChallengeEntry, ChallengeStatus
+from backend.challenge_manager import ChallengeEntry
 from backend.prompts import ChallengeMeta
 from backend.scheduler import TieredModelConfig, TieredScheduler
 from backend.triage import ChallengeTriager
@@ -65,3 +65,36 @@ def test_tiered_scheduler_dispatch() -> None:
     assert "go-messages/deepseek-r1" in selected
     assert scheduler.get_timeout_s(entry) == 1200
 
+
+def test_scheduler_does_not_inject_models_for_empty_configuration() -> None:
+    config = TieredModelConfig.from_settings(SimpleNamespace(), [])
+    entry = ChallengeEntry(
+        name="empty",
+        challenge_dir="/tmp",
+        meta=ChallengeMeta(name="empty"),
+    )
+
+    assert config.fast_models == ()
+    assert config.expert_models == ()
+    assert config.racing_models == ()
+    assert TieredScheduler(config).select_models(entry) == []
+
+
+def test_scheduler_fallback_uses_cli_order_without_model_name_inference() -> None:
+    available = ["provider/model-z", "provider/model-a", "provider/model-small-name"]
+    config = TieredModelConfig.from_settings(SimpleNamespace(), available)
+
+    assert config.fast_models == ("provider/model-z",)
+    assert config.expert_models == ("provider/model-a",)
+    assert config.racing_models == tuple(available)
+
+
+def test_explicit_scheduler_roles_must_be_available_models() -> None:
+    settings = SimpleNamespace(
+        scheduler_fast_models="provider/not-selected",
+        scheduler_expert_models="",
+        scheduler_racing_models="",
+    )
+
+    with pytest.raises(ValueError, match="must also be present in --models"):
+        TieredModelConfig.from_settings(settings, ["provider/selected"])

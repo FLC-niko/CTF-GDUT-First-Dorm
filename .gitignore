@@ -30,3 +30,5 @@ codex-schema-*/
 workers.*.yml
 !workers.example.yml
 competition_state*.json
+.ctf-agent-state.json
+benchmark_reports/

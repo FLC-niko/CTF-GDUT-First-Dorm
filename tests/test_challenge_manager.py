@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
-import pytest
-
-from backend.challenge_manager import ChallengeEntry, ChallengeManager, ChallengeStatus
+from backend.challenge_manager import ChallengeManager, ChallengeStatus
+from backend.config import Settings
+from backend.cost_tracker import CostTracker
+from backend.deps import CoordinatorDeps
 from backend.persistence import StatePersistence
 from backend.prompts import ChallengeMeta
 from backend.triage import TriageReport
@@ -24,9 +24,7 @@ def test_state_persistence_atomic_write_and_read(tmp_path: Path) -> None:
         "version": 1,
         "team": "FLC",
         "api_key": "secret-key-12345",  # should be redacted
-        "challenges": {
-            "pwn1": {"status": "pending", "value": 100}
-        }
+        "challenges": {"pwn1": {"status": "pending", "value": 100}},
     }
     persistence.save(sample_data)
 
@@ -47,7 +45,19 @@ def test_challenge_manager_lifecycle_and_recovery(tmp_path: Path) -> None:
     # 1. Register challenge
     chal_dir = tmp_path / "pwn-chal"
     chal_dir.mkdir()
-    meta = ChallengeMeta(name="ret2text", category="pwn", value=200)
+    meta = ChallengeMeta(
+        name="ret2text",
+        category="pwn",
+        value=200,
+        description="Stack challenge",
+        tags=["stack"],
+        connection_info="nc challenge.example 31337",
+        platform="ctfd",
+        platform_url="https://ctf.example",
+        event_id=7,
+        platform_challenge_id=11,
+        requires_env_start=True,
+    )
     entry = manager.register_challenge(chal_dir, meta)
     assert entry.status is ChallengeStatus.PENDING
 
@@ -92,4 +102,32 @@ def test_challenge_manager_lifecycle_and_recovery(tmp_path: Path) -> None:
     assert restored.status is ChallengeStatus.CONFIRMED
     assert restored.confirmed_flag == "flag{candidate_test}"
     assert restored.tier == "racing"
+    assert restored.meta == meta
 
+
+def test_coordinator_dependencies_do_not_share_implicit_repository_state(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    settings = Settings(_env_file=None, competition_state_file="")
+    first = CoordinatorDeps(
+        ctfd=object(),  # type: ignore[arg-type]
+        cost_tracker=CostTracker(),
+        settings=settings,
+        model_specs=[],
+    )
+    first.challenge_manager.register_challenge(
+        tmp_path / "first",
+        ChallengeMeta(name="first"),
+    )
+
+    second = CoordinatorDeps(
+        ctfd=object(),  # type: ignore[arg-type]
+        cost_tracker=CostTracker(),
+        settings=Settings(_env_file=None, competition_state_file=""),
+        model_specs=[],
+    )
+
+    assert second.challenge_manager.challenges == {}
+    assert not (tmp_path / "competition_state.json").exists()

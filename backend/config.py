@@ -74,6 +74,13 @@ class Settings(BaseSettings):
     worker_config_file: str = ""
     local_worker_arch: str = ""
     max_concurrent_containers: int = 2
+    competition_state_file: str = ""
+    scheduler_fast_models: str = ""
+    scheduler_expert_models: str = ""
+    scheduler_racing_models: str = ""
+    scheduler_fast_timeout_seconds: int = 300
+    scheduler_expert_timeout_seconds: int = 900
+    scheduler_racing_timeout_seconds: int = 1800
     all_solved_policy: AllSolvedPolicy = "wait"
     all_solved_idle_seconds: int = 300
     writeup_mode: WriteupMode = "off"
@@ -114,4 +121,11 @@ class Settings(BaseSettings):
             raise ValueError("container_pids_limit must be greater than 0")
         if self.max_concurrent_containers <= 0:
             raise ValueError("max_concurrent_containers must be greater than 0")
+        for name in (
+            "scheduler_fast_timeout_seconds",
+            "scheduler_expert_timeout_seconds",
+            "scheduler_racing_timeout_seconds",
+        ):
+            if getattr(self, name) <= 0:
+                raise ValueError(f"{name} must be greater than 0")
         return self

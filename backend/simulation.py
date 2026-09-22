@@ -11,15 +11,11 @@ import logging
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
-from pathlib import Path
-from typing import Any
 
 from backend.challenge_manager import ChallengeManager, ChallengeStatus
 from backend.persistence import StatePersistence
-from backend.prompts import ChallengeMeta
 from backend.sandbox import (
     acquire_lifecycle_lease,
-    configure_semaphore,
     release_lifecycle_lease,
 )
 
@@ -112,7 +108,7 @@ class CompetitionSimulator:
         self,
         manager: ChallengeManager,
         simulated_duration_s: float = 14400.0,  # 4 hours
-        time_scale: float = 1000.0,             # 1000x acceleration for testing
+        time_scale: float = 1000.0,  # 1000x acceleration for testing
     ) -> None:
         self.manager = manager
         self.simulated_duration_s = simulated_duration_s
@@ -138,19 +134,26 @@ class CompetitionSimulator:
             faults_injected += 1
             if await FaultInjector.inject_rate_limit(self.manager, target_name, cooldown_s=0.1):
                 faults_recovered += 1
-                self.events.append(SimulationEvent(time.time(), "fault_recovered", "429 rate limit recovered"))
+                self.events.append(
+                    SimulationEvent(time.time(), "fault_recovered", "429 rate limit recovered")
+                )
 
             # 2. Inject container crash
             faults_injected += 1
             if await FaultInjector.inject_container_crash(target_name):
                 faults_recovered += 1
-                self.events.append(SimulationEvent(time.time(), "fault_recovered", "Container crash lease recovered"))
+                self.events.append(
+                    SimulationEvent(
+                        time.time(), "fault_recovered", "Container crash lease recovered"
+                    )
+                )
 
         await asyncio.sleep(real_sleep)
         elapsed = time.time() - start_time
 
         solved_count = sum(
-            1 for c in self.manager.challenges.values()
+            1
+            for c in self.manager.challenges.values()
             if c.status in (ChallengeStatus.SOLVED, ChallengeStatus.CONFIRMED)
         )
 
@@ -162,4 +165,3 @@ class CompetitionSimulator:
             faults_recovered=faults_recovered,
             events=self.events,
         )
-

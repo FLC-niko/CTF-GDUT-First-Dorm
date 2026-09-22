@@ -35,7 +35,9 @@ def _setup_logging(verbose: bool = False) -> None:
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("aiodocker").setLevel(logging.WARNING)
     handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)-8s %(message)s", datefmt="%X"))
+    handler.setFormatter(
+        logging.Formatter("[%(asctime)s] %(levelname)-8s %(message)s", datefmt="%X")
+    )
     logging.basicConfig(level=level, handlers=[handler], force=True)
 
 
@@ -163,7 +165,11 @@ def main(
     if writeup_dir is not None:
         settings_kwargs["writeup_dir"] = str(writeup_dir)
 
-    if all_solved_policy == "idle" and all_solved_idle_seconds is not None and all_solved_idle_seconds <= 0:
+    if (
+        all_solved_policy == "idle"
+        and all_solved_idle_seconds is not None
+        and all_solved_idle_seconds <= 0
+    ):
         raise click.ClickException("--all-solved-idle-seconds 必须大于 0")
 
     try:
@@ -251,6 +257,8 @@ async def _run_single(
     await cleanup_orphan_containers()
 
     challenge_path = Path(challenge_dir)
+    if not settings.competition_state_file:
+        settings.competition_state_file = str(challenge_path.parent / ".ctf-agent-state.json")
     meta_path = challenge_path / "metadata.yml"
     if not meta_path.exists():
         console.print(f"[red]No metadata.yml found in {challenge_dir}[/red]")
@@ -324,6 +332,8 @@ async def _run_coordinator(
     """Run the full coordinator (continuous until Ctrl+C)."""
     from backend.sandbox import cleanup_orphan_containers, configure_semaphore
 
+    if not settings.competition_state_file:
+        settings.competition_state_file = str(Path(challenges_dir) / ".ctf-agent-state.json")
     configure_semaphore(settings.max_concurrent_containers)
     await cleanup_orphan_containers()
     label = "none/headless" if coordinator_backend == "none" else coordinator_backend

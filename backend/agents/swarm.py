@@ -79,7 +79,9 @@ class ChallengeSwarm:
     _flag_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _submit_count: dict[str, int] = field(default_factory=dict)  # per-model wrong submission count
     _submitted_flags: set[str] = field(default_factory=set)  # dedup exact flags
-    _last_submit_time: dict[str, float] = field(default_factory=dict)  # per-model last submit timestamp
+    _last_submit_time: dict[str, float] = field(
+        default_factory=dict
+    )  # per-model last submit timestamp
     message_bus: ChallengeMessageBus = field(default_factory=ChallengeMessageBus)
 
     def __post_init__(self) -> None:
@@ -95,11 +97,14 @@ class ChallengeSwarm:
         """
         provider = provider_from_spec(model_spec)
 
-        def _submit_fn(flag): return self.try_submit_flag(flag, model_spec)
+        def _submit_fn(flag):
+            return self.try_submit_flag(flag, model_spec)
+
         _notify = self._make_notify_fn(model_spec)
 
         if provider == "claude-sdk":
             from backend.agents.claude_solver import ClaudeSolver
+
             return ClaudeSolver(
                 model_spec=model_spec,
                 challenge_dir=self.challenge_dir,
@@ -116,6 +121,7 @@ class ChallengeSwarm:
 
         if provider == "codex":
             from backend.agents.codex_solver import CodexSolver
+
             return CodexSolver(
                 model_spec=model_spec,
                 challenge_dir=self.challenge_dir,
@@ -134,14 +140,16 @@ class ChallengeSwarm:
 
     def _make_notify_fn(self, model_spec: str):
         """Create a callback that pushes solver messages to the coordinator inbox."""
+
         async def _notify(message: str) -> None:
             if self.coordinator_inbox:
-                self.coordinator_inbox.put_nowait(
-                    f"[{self.meta.name}/{model_spec}] {message}"
-                )
+                self.coordinator_inbox.put_nowait(f"[{self.meta.name}/{model_spec}] {message}")
+
         return _notify
 
-    def _create_pydantic_solver(self, model_spec: str, sandbox=None, owns_sandbox: bool | None = None) -> Solver:
+    def _create_pydantic_solver(
+        self, model_spec: str, sandbox=None, owns_sandbox: bool | None = None
+    ) -> Solver:
         """Create a Pydantic AI solver. Pass sandbox to reuse an existing container (quota fallback)."""
         solver = Solver(
             model_spec=model_spec,
@@ -240,13 +248,19 @@ class ChallengeSwarm:
         finally:
             await solver.stop()
 
-    async def _run_solver_loop(self, solver, model_spec: str) -> tuple[SolverResult, SolverProtocol]:
+    async def _run_solver_loop(
+        self, solver, model_spec: str
+    ) -> tuple[SolverResult, SolverProtocol]:
         """Inner loop: start → run → bump → run → ..."""
         bump_count = 0
         consecutive_errors = 0
         result = SolverResult(
-            flag=None, status=CANCELLED, findings_summary="",
-            step_count=0, cost_usd=0.0, log_path="",
+            flag=None,
+            status=CANCELLED,
+            findings_summary="",
+            step_count=0,
+            cost_usd=0.0,
+            log_path="",
         )
         await solver.start()
 
@@ -254,16 +268,16 @@ class ChallengeSwarm:
             result = await solver.run_until_done_or_gave_up()
 
             # Only broadcast useful findings — skip errors and broken solvers
-            if (result.status not in (ERROR, QUOTA_ERROR)
-                    and not (result.step_count == 0 and result.cost_usd == 0)
-                    and result.findings_summary
-                    and not result.findings_summary.startswith(("Error:", "Turn failed:"))):
+            if (
+                result.status not in (ERROR, QUOTA_ERROR)
+                and not (result.step_count == 0 and result.cost_usd == 0)
+                and result.findings_summary
+                and not result.findings_summary.startswith(("Error:", "Turn failed:"))
+            ):
                 self.findings[model_spec] = result.findings_summary
                 await self.message_bus.post(model_spec, result.findings_summary[:500])
 
-            if result.status == FLAG_FOUND or (
-                result.status == FLAG_CANDIDATE and self.no_submit
-            ):
+            if result.status == FLAG_FOUND or (result.status == FLAG_CANDIDATE and self.no_submit):
                 self.cancel_event.set()
                 self.winner = result
                 logger.info(
@@ -291,7 +305,9 @@ class ChallengeSwarm:
                     # Detach sandbox from old solver so stop() doesn't destroy it
                     solver.sandbox = None  # type: ignore[assignment]
                     await solver.stop()
-                    solver = self._create_pydantic_solver(fallback_spec, sandbox=existing_sandbox, owns_sandbox=True)
+                    solver = self._create_pydantic_solver(
+                        fallback_spec, sandbox=existing_sandbox, owns_sandbox=True
+                    )
                     self.solvers[model_spec] = solver
                     await solver.start()
                     continue
@@ -328,9 +344,7 @@ class ChallengeSwarm:
                     pass  # cooldown elapsed, proceed with bump
                 insights = self._gather_sibling_insights(model_spec)
                 solver.bump(insights)
-                logger.info(
-                    f"[{self.meta.name}/{model_spec}] Bumped ({bump_count}), resuming"
-                )
+                logger.info(f"[{self.meta.name}/{model_spec}] Bumped ({bump_count}), resuming")
                 continue
 
         return result, solver
@@ -352,9 +366,7 @@ class ChallengeSwarm:
                     except Exception:
                         continue
                     candidate_is_terminal = (
-                        result is not None
-                        and result.status == FLAG_CANDIDATE
-                        and self.no_submit
+                        result is not None and result.status == FLAG_CANDIDATE and self.no_submit
                     )
                     if result and (result.status == FLAG_FOUND or candidate_is_terminal):
                         self.cancel_event.set()
@@ -367,10 +379,14 @@ class ChallengeSwarm:
 
             self.cancel_event.set()
             return self.winner
+        except asyncio.CancelledError:
+            self.cancel_event.set()
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
         except Exception as e:
-            logger.error(
-                "[%s] Swarm error (%s)", self.meta.name, type(e).__name__
-            )
+            logger.error("[%s] Swarm error (%s)", self.meta.name, type(e).__name__)
             self.cancel_event.set()
             for t in tasks:
                 t.cancel()
@@ -390,8 +406,9 @@ class ChallengeSwarm:
             "agents": {
                 spec: {
                     "findings": self.findings.get(spec, ""),
-                    "status": "running" if spec in self.solvers and not self.cancel_event.is_set()
-                             else ("won" if self.winner and self.winner.flag else "finished"),
+                    "status": "running"
+                    if spec in self.solvers and not self.cancel_event.is_set()
+                    else ("won" if self.winner and self.winner.flag else "finished"),
                 }
                 for spec in self.model_specs
             },

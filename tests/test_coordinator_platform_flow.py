@@ -768,7 +768,9 @@ async def test_run_event_loop_refreshes_runtime_state_each_tick(
     monkeypatch.setattr(coordinator_loop, "CompetitionPoller", FakePoller)
     monkeypatch.setattr(coordinator_loop, "_start_msg_server", fake_start_msg_server)
     monkeypatch.setattr(coordinator_loop, "_auto_spawn_unsolved", fake_auto_spawn_unsolved)
-    monkeypatch.setattr(coordinator_loop, "build_runtime_state_snapshot", fake_build_runtime_state_snapshot)
+    monkeypatch.setattr(
+        coordinator_loop, "build_runtime_state_snapshot", fake_build_runtime_state_snapshot
+    )
 
     result = await coordinator_loop.run_event_loop(
         deps=deps,
@@ -921,7 +923,9 @@ async def test_run_event_loop_reads_trace_and_auto_bumps_from_open_hypothesis(
         return CompetitionState(
             known_challenges={"echo"},
             known_solved={"echo"},
-            challenges={"echo": ChallengeState(challenge_name="echo", status="running", category="web")},
+            challenges={
+                "echo": ChallengeState(challenge_name="echo", status="running", category="web")
+            },
             swarms={
                 "echo": SwarmState(
                     challenge_name="echo",
@@ -943,7 +947,9 @@ async def test_run_event_loop_reads_trace_and_auto_bumps_from_open_hypothesis(
     monkeypatch.setattr(coordinator_loop, "CompetitionPoller", FakePoller)
     monkeypatch.setattr(coordinator_loop, "_start_msg_server", fake_start_msg_server)
     monkeypatch.setattr(coordinator_loop, "_auto_spawn_unsolved", fake_auto_spawn_unsolved)
-    monkeypatch.setattr(coordinator_loop, "build_runtime_state_snapshot", fake_build_runtime_state_snapshot)
+    monkeypatch.setattr(
+        coordinator_loop, "build_runtime_state_snapshot", fake_build_runtime_state_snapshot
+    )
     monkeypatch.setattr(coordinator_core, "execute_action", fake_execute_action)
 
     await coordinator_loop.run_event_loop(
@@ -957,7 +963,10 @@ async def test_run_event_loop_reads_trace_and_auto_bumps_from_open_hypothesis(
     bump_actions = [action for action in executed_actions if isinstance(action, BumpSolver)]
     assert len(bump_actions) == 1
     assert bump_actions[0].challenge_name == "echo"
-    assert bump_actions[0].guidance == "Retry with open hypothesis: candidate finding: possible SQLi on id parameter"
+    assert (
+        bump_actions[0].guidance
+        == "Retry with open hypothesis: candidate finding: possible SQLi on id parameter"
+    )
 
 
 @pytest.mark.asyncio
@@ -1164,7 +1173,7 @@ async def test_run_event_loop_cleans_up_when_initial_plan_tick_raises(
             cost_tracker=deps.cost_tracker,
             turn_fn=fake_turn_fn,
             status_interval=9999,
-    )
+        )
 
     assert result["results"] == {}
     assert "plan tick boom" in caplog.text
@@ -1264,7 +1273,11 @@ async def test_run_event_loop_promotes_verified_platform_rule_to_knowledge_store
 ) -> None:
     trace_path = tmp_path / "trace.jsonl"
     trace_events = [
-        {"type": "tool_result", "tool": "bash", "result": "platform rule: Lingxu env题需要先 begin/run/addr"},
+        {
+            "type": "tool_result",
+            "tool": "bash",
+            "result": "platform rule: Lingxu env题需要先 begin/run/addr",
+        },
     ]
     trace_path.write_text(
         "".join(json.dumps(item) + "\n" for item in trace_events),
@@ -1353,8 +1366,16 @@ async def test_run_event_loop_promotes_category_rule_to_exploit_pattern_knowledg
 ) -> None:
     trace_path = tmp_path / "trace.jsonl"
     trace_events = [
-        {"type": "tool_result", "tool": "bash", "result": "category rule: php web题优先检查 phar metadata deserialize"},
-        {"type": "tool_result", "tool": "bash", "result": "exploit pattern: phar metadata deserialize first"},
+        {
+            "type": "tool_result",
+            "tool": "bash",
+            "result": "category rule: php web题优先检查 phar metadata deserialize",
+        },
+        {
+            "type": "tool_result",
+            "tool": "bash",
+            "result": "exploit pattern: phar metadata deserialize first",
+        },
     ]
     trace_path.write_text(
         "".join(json.dumps(item) + "\n" for item in trace_events),
@@ -1470,9 +1491,7 @@ async def test_run_event_loop_uses_real_snapshot_for_terminal_status(
             return True
 
     deps.results["alpha"] = {"solve_status": FLAG_FOUND}
-    deps.swarms["alpha"] = StubSwarm(
-        solvers={"azure/gpt-5.4": StubSolver("azure/gpt-5.4")}
-    )
+    deps.swarms["alpha"] = StubSwarm(solvers={"azure/gpt-5.4": StubSolver("azure/gpt-5.4")})
     deps.swarm_tasks["alpha"] = DoneTask()
     cost_tracker.by_agent["solver/azure/gpt-5.4"] = AgentUsage(cost_usd=0.7)
 
@@ -2041,7 +2060,9 @@ async def test_azure_advisor_complete_does_not_branch_on_provider(
             return FakeResult()
 
         async def run(self, prompt: str) -> Any:
-            raise AssertionError("run() fallback should be unreachable for azure coordinator advisor")
+            raise AssertionError(
+                "run() fallback should be unreachable for azure coordinator advisor"
+            )
 
     async def fake_start(self) -> None:
         self._agent = FakeAgent()
@@ -2565,7 +2586,7 @@ async def test_run_event_loop_applies_advisor_suggestions_via_policy_engine(
                     guidance="Try common modulus attack",
                     reason="advisor bump",
                 )
-                ]
+            ]
 
     class FakePolicyEngine:
         def plan_tick(self, **_: Any) -> list[Any]:
@@ -2649,7 +2670,9 @@ async def test_run_event_loop_applies_advisor_suggestions_via_policy_engine(
     deps.policy_engine = FakePolicyEngine()
 
     monkeypatch.setattr(coordinator_loop, "CompetitionPoller", FakePoller)
-    monkeypatch.setattr(coordinator_loop, "build_runtime_state_snapshot", fake_build_runtime_state_snapshot)
+    monkeypatch.setattr(
+        coordinator_loop, "build_runtime_state_snapshot", fake_build_runtime_state_snapshot
+    )
     monkeypatch.setattr(coordinator_loop, "_start_msg_server", fake_start_msg_server)
     monkeypatch.setattr(coordinator_loop, "_auto_spawn_unsolved", fake_auto_spawn_unsolved)
     monkeypatch.setattr(coordinator_core, "execute_action", fake_execute_action)
@@ -2763,7 +2786,10 @@ async def test_do_spawn_swarm_returns_stable_message_when_materialization_is_una
 
     result = await coordinator_core.do_spawn_swarm(deps, challenge_name)
 
-    assert result == f"Challenge '{challenge_name}' materialization is not available for this platform yet"
+    assert (
+        result
+        == f"Challenge '{challenge_name}' materialization is not available for this platform yet"
+    )
 
 
 @pytest.mark.asyncio
@@ -2883,7 +2909,9 @@ async def test_do_spawn_swarm_returns_preflight_failed_when_prepare_raises(tmp_p
 
 
 @pytest.mark.asyncio
-async def test_do_spawn_swarm_refreshes_lingxu_env_with_stale_internal_connection_info(tmp_path: Path) -> None:
+async def test_do_spawn_swarm_refreshes_lingxu_env_with_stale_internal_connection_info(
+    tmp_path: Path,
+) -> None:
     challenge_name = "env-task"
 
     class RefreshingPlatform(FakePlatform):
@@ -3055,12 +3083,32 @@ async def test_do_submit_flag_prefers_challenge_meta_over_name() -> None:
 
 
 @pytest.mark.asyncio
-async def test_do_fetch_challenges_uses_effective_handled_view_for_skipped_and_dry_run_results() -> None:
+async def test_do_fetch_challenges_uses_effective_handled_view_for_skipped_and_dry_run_results() -> (
+    None
+):
     platform = FakePlatform(
         all_challenges=[
-            {"name": "check-only", "category": "web", "value": 100, "solves": 0, "description": "unsupported"},
-            {"name": "dry-run-win", "category": "misc", "value": 200, "solves": 0, "description": "local solve"},
-            {"name": "fresh", "category": "crypto", "value": 300, "solves": 0, "description": "unsolved"},
+            {
+                "name": "check-only",
+                "category": "web",
+                "value": 100,
+                "solves": 0,
+                "description": "unsupported",
+            },
+            {
+                "name": "dry-run-win",
+                "category": "misc",
+                "value": 200,
+                "solves": 0,
+                "description": "local solve",
+            },
+            {
+                "name": "fresh",
+                "category": "crypto",
+                "value": 300,
+                "solves": 0,
+                "description": "unsolved",
+            },
         ],
         solved_snapshots=[set()],
     )
@@ -3347,6 +3395,67 @@ async def test_do_spawn_swarm_writes_minimal_record_when_swarm_returns_none(
     assert record["submit_status"] == ""
     assert record["writeup_status"] == "skipped"
     assert record["env_cleanup_status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_do_spawn_swarm_timeout_cancels_and_escalates_tier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    challenge_name = "times-out"
+    challenge_dir = tmp_path / challenge_name
+    challenge_dir.mkdir()
+    cancelled = asyncio.Event()
+
+    class BlockingSwarm:
+        def __init__(self, **kwargs: Any) -> None:
+            self.meta = kwargs["meta"]
+            self.cancel_event = asyncio.Event()
+            self.solvers: dict[str, Any] = {}
+            self.confirmed_flag = None
+            self.confirmed_submit_status = ""
+            self.confirmed_submit_display = ""
+            self.confirmed_submit_message = ""
+
+        async def run(self) -> None:
+            try:
+                await asyncio.Future()
+            finally:
+                cancelled.set()
+
+        def kill(self) -> None:
+            self.cancel_event.set()
+
+    class ShortTimeoutScheduler:
+        def select_models(self, _entry: Any) -> list[str]:
+            return ["provider/model"]
+
+        def get_timeout_s(self, _entry: Any) -> float:
+            return 0.01
+
+    deps = CoordinatorDeps(
+        ctfd=FakePlatform(),
+        cost_tracker=CostTracker(),
+        settings=make_settings(),
+        model_specs=["provider/model"],
+        scheduler=ShortTimeoutScheduler(),
+    )
+    deps.challenge_dirs[challenge_name] = str(challenge_dir)
+    deps.challenge_metas[challenge_name] = ChallengeMeta(
+        name=challenge_name,
+        category="web",
+    )
+    monkeypatch.setattr(swarm_module, "ChallengeSwarm", BlockingSwarm)
+
+    await coordinator_core.do_spawn_swarm(deps, challenge_name)
+    await deps.swarm_tasks[challenge_name]
+
+    entry = deps.challenge_manager.challenges[challenge_name]
+    assert cancelled.is_set()
+    assert entry.attempts == 1
+    assert entry.tier == "expert"
+    assert entry.status.value == "triaged"
+    assert entry.active_solvers == []
 
 
 @pytest.mark.asyncio

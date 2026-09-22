@@ -21,14 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 class ChallengeStatus(StrEnum):
-    PENDING = "pending"          # Discovered or imported, waiting for triage
-    TRIAGED = "triaged"          # Triage complete, ready to be dispatched
-    SOLVING = "solving"          # Actively being solved by one or more agents
-    PAUSED = "paused"            # Temporarily suspended (e.g. rate limit cooldown)
-    SOLVED = "solved"            # Candidate flag obtained, pending platform confirmation
-    CONFIRMED = "confirmed"      # Flag verified and accepted by the competition platform
-    FAILED = "failed"            # Max attempts exhausted, or gave up
-    SKIPPED = "skipped"          # Explicitly skipped by operator or policy rule
+    PENDING = "pending"  # Discovered or imported, waiting for triage
+    TRIAGED = "triaged"  # Triage complete, ready to be dispatched
+    SOLVING = "solving"  # Actively being solved by one or more agents
+    PAUSED = "paused"  # Temporarily suspended (e.g. rate limit cooldown)
+    SOLVED = "solved"  # Candidate flag obtained, pending platform confirmation
+    CONFIRMED = "confirmed"  # Flag verified and accepted by the competition platform
+    FAILED = "failed"  # Max attempts exhausted, or gave up
+    SKIPPED = "skipped"  # Explicitly skipped by operator or policy rule
 
 
 @dataclass
@@ -58,13 +58,15 @@ class ChallengeEntry:
         self.last_state_change = time.time()
         if reason:
             self.notes = f"[{new_status.value}] {reason}"
-        logger.info("Challenge '%s': %s -> %s (reason: %s)", self.name, old_status, new_status, reason)
+        logger.info(
+            "Challenge '%s': %s -> %s (reason: %s)", self.name, old_status, new_status, reason
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "challenge_dir": self.challenge_dir,
-            "category": self.meta.category,
+            "meta": asdict(self.meta),
             "status": self.status.value,
             "tier": self.tier,
             "triage_report": self.triage_report.to_dict() if self.triage_report else None,
@@ -84,11 +86,22 @@ class ChallengeEntry:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ChallengeEntry:
-        meta = ChallengeMeta(
-            name=data["name"],
-            category=data.get("category", ""),
+        raw_meta = data.get("meta")
+        if isinstance(raw_meta, dict):
+            known_fields = ChallengeMeta.__dataclass_fields__
+            meta = ChallengeMeta(
+                **{key: value for key, value in raw_meta.items() if key in known_fields}
+            )
+        else:
+            # Backward compatibility with version 1 state written before full
+            # challenge metadata was preserved.
+            meta = ChallengeMeta(
+                name=data["name"],
+                category=data.get("category", ""),
+            )
+        triage = (
+            TriageReport.from_dict(data["triage_report"]) if data.get("triage_report") else None
         )
-        triage = TriageReport.from_dict(data["triage_report"]) if data.get("triage_report") else None
         return cls(
             name=data["name"],
             challenge_dir=data.get("challenge_dir", ""),
@@ -118,10 +131,12 @@ class ChallengeManager:
         self,
         persistence: StatePersistence | None = None,
         max_concurrent_challenges: int = 3,
+        max_attempts_per_challenge: int = 3,
     ) -> None:
         self.challenges: dict[str, ChallengeEntry] = {}
         self.persistence = persistence
         self.max_concurrent_challenges = max_concurrent_challenges
+        self.max_attempts_per_challenge = max_attempts_per_challenge
         self._load_persisted_state()
 
     def _load_persisted_state(self) -> None:
@@ -147,7 +162,7 @@ class ChallengeManager:
         if not self.persistence:
             return
         serialized = {
-            "version": 1,
+            "version": 2,
             "updated_at": time.time(),
             "challenges": {k: v.to_dict() for k, v in self.challenges.items()},
         }
@@ -164,10 +179,19 @@ class ChallengeManager:
             meta=meta,
             status=ChallengeStatus.PENDING,
             priority=float(meta.value or 100.0),
+            max_attempts=self.max_attempts_per_challenge,
         )
         self.challenges[meta.name] = entry
         self.save_state()
         return entry
+
+    def record_solving(self, challenge_name: str, model_specs: list[str]) -> None:
+        entry = self.challenges.get(challenge_name)
+        if not entry:
+            return
+        entry.active_solvers = list(model_specs)
+        entry.transition_to(ChallengeStatus.SOLVING, "Solver dispatch started")
+        self.save_state()
 
     def record_triage(self, challenge_name: str, report: TriageReport) -> None:
         entry = self.challenges.get(challenge_name)
@@ -176,9 +200,13 @@ class ChallengeManager:
         entry.triage_report = report
         entry.tier = report.suggested_tier
         # Higher complexity challenges with low current solved count receive higher priority
-        complexity_bonus = (5 - report.complexity_score) * 10  # fast easy challenges get quick solve priority
+        complexity_bonus = (
+            5 - report.complexity_score
+        ) * 10  # fast easy challenges get quick solve priority
         entry.priority = float((entry.meta.value or 100.0) + complexity_bonus)
-        entry.transition_to(ChallengeStatus.TRIAGED, f"Triage complete (score={report.complexity_score})")
+        entry.transition_to(
+            ChallengeStatus.TRIAGED, f"Triage complete (score={report.complexity_score})"
+        )
         self.save_state()
 
     def record_candidate_flag(self, challenge_name: str, flag: str, model_spec: str) -> None:
@@ -188,6 +216,7 @@ class ChallengeManager:
             return
         entry.candidate_flag = flag
         entry.winner_model = model_spec
+        entry.active_solvers.clear()
         entry.transition_to(ChallengeStatus.SOLVED, f"Candidate flag found by {model_spec}")
         self.save_state()
 
@@ -197,6 +226,7 @@ class ChallengeManager:
         if not entry:
             return
         entry.confirmed_flag = flag
+        entry.active_solvers.clear()
         entry.transition_to(ChallengeStatus.CONFIRMED, "Platform accepted flag")
         self.save_state()
 
@@ -205,6 +235,7 @@ class ChallengeManager:
         if not entry:
             return
         entry.attempts += 1
+        entry.active_solvers.clear()
         if entry.attempts >= entry.max_attempts:
             entry.transition_to(ChallengeStatus.FAILED, f"Max attempts reached: {reason}")
         else:
@@ -213,12 +244,17 @@ class ChallengeManager:
                 entry.tier = "expert"
             elif entry.tier == "expert":
                 entry.tier = "racing"
-            entry.transition_to(ChallengeStatus.TRIAGED, f"Upgraded to tier={entry.tier} after attempt {entry.attempts}")
+            entry.transition_to(
+                ChallengeStatus.TRIAGED,
+                f"Upgraded to tier={entry.tier} after attempt {entry.attempts}",
+            )
         self.save_state()
 
     def next_ready_challenges(self) -> list[ChallengeEntry]:
         """Return triaged challenges sorted by priority, up to available capacity."""
-        currently_solving = sum(1 for c in self.challenges.values() if c.status is ChallengeStatus.SOLVING)
+        currently_solving = sum(
+            1 for c in self.challenges.values() if c.status is ChallengeStatus.SOLVING
+        )
         available_slots = max(0, self.max_concurrent_challenges - currently_solving)
         if available_slots <= 0:
             return []
@@ -226,4 +262,3 @@ class ChallengeManager:
         candidates = [c for c in self.challenges.values() if c.status is ChallengeStatus.TRIAGED]
         candidates.sort(key=lambda c: c.priority, reverse=True)
         return candidates[:available_slots]
-

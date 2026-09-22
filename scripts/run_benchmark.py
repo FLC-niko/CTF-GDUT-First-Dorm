@@ -1,44 +1,56 @@
-"""Script to generate standard CTF benchmark report."""
+"""Render a benchmark report from externally collected run records.
+
+This command does not execute solvers and must not be described as an empirical
+benchmark run. It deliberately requires an input file so generated fixtures can
+never be mistaken for live provider or historical CTF evidence.
+"""
 
 from __future__ import annotations
 
+import argparse
+import json
 import time
 from pathlib import Path
+from typing import Any
 
-from backend.benchmark import (
-    BenchmarkRunner,
-    BenchmarkSuiteResult,
-    BenchmarkTaskResult,
-)
+from backend.benchmark import BenchmarkRunner, BenchmarkSuiteResult, BenchmarkTaskResult
+
+
+def _load_tasks(path: Path) -> list[BenchmarkTaskResult]:
+    data: Any = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or data.get("provenance") != "measured":
+        raise ValueError("input must declare provenance='measured'")
+    raw_tasks = data.get("tasks")
+    if not isinstance(raw_tasks, list) or not raw_tasks:
+        raise ValueError("input must contain a non-empty tasks list")
+
+    fields = BenchmarkTaskResult.__dataclass_fields__
+    return [
+        BenchmarkTaskResult(**{key: value for key, value in task.items() if key in fields})
+        for task in raw_tasks
+        if isinstance(task, dict)
+    ]
 
 
 def main() -> None:
-    reports_dir = Path("docs").resolve()
-    runner = BenchmarkRunner(output_dir=reports_dir)
+    parser = argparse.ArgumentParser(
+        description="Render a report from measured benchmark task records."
+    )
+    parser.add_argument("--input", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, default=Path("benchmark_reports"))
+    parser.add_argument("--report-name", default="benchmark_report")
+    args = parser.parse_args()
 
-    # 5 standard challenges evaluated across Fast, Expert, and Racing configurations
-    tasks = [
-        # Fast solver evaluations
-        BenchmarkTaskResult("web_jwt_bypass", "web", "codex/gpt-5.4-mini", "fast", True, 22.4, "flag{jwt_alg_none_pwned}", 3, 3, 1100, 0.002),
-        BenchmarkTaskResult("misc_stego_flag", "misc", "codex/gpt-5.4-mini", "fast", True, 15.1, "flag{exif_metadata_found}", 2, 2, 850, 0.0015),
-        BenchmarkTaskResult("crypto_affine", "crypto", "codex/gpt-5.4-mini", "fast", False, 60.0, None, 4, 2, 2900, 0.004, "Inverse modulo step unresolved"),
-        BenchmarkTaskResult("pwn_ret2text", "pwn", "codex/gpt-5.4-mini", "fast", False, 90.0, None, 5, 2, 4200, 0.006, "EIP offset computation failed"),
-        BenchmarkTaskResult("rev_xor_check", "reverse", "codex/gpt-5.4-mini", "fast", False, 75.0, None, 4, 3, 3500, 0.005, "Loop unrolling error"),
-
-        # Expert solver evaluations
-        BenchmarkTaskResult("crypto_affine", "crypto", "codex/gpt-5.4", "expert", True, 38.6, "flag{affinecipher_solved}", 5, 5, 3800, 0.012),
-        BenchmarkTaskResult("rev_xor_check", "reverse", "codex/gpt-5.4", "expert", True, 54.2, "flag{rolling_xor_key_win}", 6, 6, 5100, 0.018),
-        BenchmarkTaskResult("pwn_ret2text", "pwn", "codex/gpt-5.4", "expert", False, 180.0, None, 9, 6, 9200, 0.035, "Stack canary defense misidentified"),
-
-        # Racing solver evaluation (Orthogonal family exploration: DeepSeek / Gemini)
-        BenchmarkTaskResult("pwn_ret2text", "pwn", "go-messages/deepseek-r1", "racing", True, 74.5, "flag{ret2win_pwned}", 8, 8, 6400, 0.015),
-    ]
-
+    tasks = _load_tasks(args.input)
+    if not tasks:
+        raise ValueError("input did not contain any valid task records")
     suite = BenchmarkSuiteResult(timestamp=time.time(), tasks=tasks)
-    runner.record_run(suite, report_name="BENCHMARK_REPORT")
-    print("Benchmark report written to docs/BENCHMARK_REPORT.md")
+    report = BenchmarkRunner(output_dir=args.output_dir).record_run(
+        suite,
+        report_name=args.report_name,
+    )
+    print(f"Benchmark report written to {report}")
 
 
 if __name__ == "__main__":
     main()
-
