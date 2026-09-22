@@ -49,7 +49,7 @@
 
 ## M2：CPA 真实调用
 
-> 状态（2026-09-22）：Responses 与 Chat adapter、Solver 接线、协议级工具多轮测试已完成。对当前公网 CPA 端点的 Bearer `/models` 与 Messages `x-api-key` 实测均返回 HTTP 401，服务端明确报告凭据无效。M2 真实调用阻塞在有效 CPA 凭据，不能标记完成。
+> 状态（2026-09-22）：更新凭据后，Bearer `/models` 实测返回 HTTP 200 和 37 个模型。GPT Chat、Gemini Chat 和 GPT Responses 均通过真实工具调用往返，M2 要求的 GPT/Gemini 真实协议接入已验收。旧别名 `gemini-3.1-pro` 会返回 `model_not_found`，当前 Gemini Chat 验收使用服务端目录中的 `gemini-3.8-flash-high`。
 
 - 从 CPA 实际接口获取可用模型 ID；先测认证/简单响应，再测工具调用/多轮上下文/取消/超时；不能把 `/models` 成功当成 solver 成功。
 - 首先复用经验证的 Responses 路径接入一个 GPT 模型；随后验证 Gemini 在该路径是否真的兼容，不能假设与 Codex 相同。

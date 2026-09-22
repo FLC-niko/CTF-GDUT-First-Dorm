@@ -1,5 +1,16 @@
 # Development changelog
 
+## 2026-09-22 — CPA credential recovery and live GPT/Gemini acceptance
+
+- Replaced the local git-ignored CPA credential; `/models` returned HTTP 200 with 37 models and
+  confirmed the configured GPT selector.
+- Completed real tool-call round trips for GPT over Chat Completions, Gemini over Chat Completions,
+  and GPT over Responses (`1 passed` for each opt-in run).
+- Recorded one transient TLS connection failure before a successful retry. Direct `httpx` and
+  project `httpx2` probes both subsequently returned HTTP 200.
+- Rejected the stale `gemini-3.1-pro` alias after the server returned `model_not_found`; current
+  Gemini Chat acceptance used `gemini-3.8-flash-high` from the live model directory.
+
 ## 2026-09-22 — Live OpenCode Go protocol acceptance and local provider setup
 
 - Added a local git-ignored, mode `0600` `.env` with redacted Doctor-visible CPA/OpenCode Go
