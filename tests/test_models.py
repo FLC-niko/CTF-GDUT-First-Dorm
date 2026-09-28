@@ -3,7 +3,13 @@ from __future__ import annotations
 from pydantic_ai.models.openai import OpenAIResponsesModel
 
 from backend.config import Settings
-from backend.models import model_id_from_spec, resolve_model, resolve_model_settings
+from backend.models import (
+    context_window,
+    model_id_from_spec,
+    resolve_model,
+    resolve_model_settings,
+    supports_vision,
+)
 
 
 def test_resolve_model_uses_openai_responses_for_azure() -> None:
@@ -41,3 +47,10 @@ def test_model_id_preserves_slashes_for_protocol_providers() -> None:
 
 def test_native_solver_effort_suffix_is_not_part_of_model_id() -> None:
     assert model_id_from_spec("codex/gpt-5.4/max") == "gpt-5.4"
+
+
+def test_gpt6_family_uses_official_context_and_vision_metadata() -> None:
+    for model_id in ("gpt-6-astra", "gpt-6-sol", "gpt-6-luna"):
+        model_spec = f"cpa-responses/{model_id}"
+        assert context_window(model_spec) == 1_050_000
+        assert supports_vision(model_spec)

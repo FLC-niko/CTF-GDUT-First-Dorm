@@ -44,6 +44,9 @@ CONTEXT_WINDOWS: dict[str, int] = {
     "gpt-5.4-mini": 400_000,
     "gpt-5.3-codex": 1_000_000,
     "gpt-5.3-codex-spark": 128_000,
+    "gpt-6-astra": 1_050_000,
+    "gpt-6-sol": 1_050_000,
+    "gpt-6-luna": 1_050_000,
     "gemini-3-flash-preview": 1_000_000,
 }
 
@@ -53,6 +56,9 @@ VISION_MODELS: set[str] = {
     "claude-opus-4-6",
     "gpt-5.4",
     "gpt-5.4-mini",
+    "gpt-6-astra",
+    "gpt-6-sol",
+    "gpt-6-luna",
     "gemini-3-flash-preview",
 }
 

@@ -17,7 +17,7 @@ Hunting Blade 是基于 `ctf-agent` 的二开版本。在同一道题交给多�
 | M0：上游审计与基线 | **已完成** | 锁定 HuntingBlade 上游 SHA `f4cae4d0ed897ccf3645742dc719b3755ba1ae83`；确认可复用 Coordinator、Solver、Swarm、Sandbox、Policy Engine 和 Working Memory；保留上游许可证与架构 | 无；后续阶段继续在现有 Agent 运行时上增量开发 |
 | M0.5：Docker 沙箱基线 | **已完成** | Windows x64 上的原生 `linux/amd64` 构建/生命周期验收已通过；Apple Silicon 上的 `linux/arm64` 完整构建、关键工具 smoke 和真实 `DockerSandbox` 测试已通过 | ARM64 不代表可原生调试 x86-64 Pwn/Reverse；该类题仍需原生 `linux/amd64` worker |
 | M1：Provider Registry 与 Doctor | **已完成** | 显式 Provider/协议注册、精确模型 ID、脱敏离线 `ctf-doctor`、错误分类、配置验证和 fake transport 回归已完成 | Doctor 默认不请求 `/models`；真实模型发现和端点验收归入 M2/M3 |
-| M2：CPA 模型接入 | **真实协议闭环已验收** | Bearer `/models` 返回 HTTP 200 和 37 个模型；`cpa-chat` 的 GPT、Gemini 以及 `cpa-responses` 的 GPT 均完成“模型调用工具→结果回传→最终回答”真实往返 | 公网端点出现过一次瞬时 TLS 连接失败；旧别名 `gemini-3.1-pro` 已失效，当前有效的 Gemini Chat 验收别名为 `gemini-3.8-flash-high`。历史 CTF 题闭环属于 M6 |
+| M2：CPA 模型接入 | **真实协议闭环已验收** | Bearer `/models` 返回 HTTP 200；`cpa-chat` 的 GPT、Gemini 以及 `cpa-responses` 的 GPT 均完成“模型调用工具→结果回传→最终回答”真实往返，GPT-6 Astra/Sol/Luna 均已通过 Responses 闭环 | 公网端点出现过瞬时 TLS 连接失败；GPT-6 Luna 首次返回过瞬时上游授权不可用 `503`，重试通过。历史 CTF 题闭环属于 M6 |
 | M3：OpenCode Go 接入与额度治理 | **真实协议闭环已验收** | 真实 `/models` 返回 33 个模型；`go-chat`、`go-messages`、`go-responses` 三条路径均完成了“模型调用工具→工具结果回传→最终回答”真实往返 | 尚未执行历史 CTF 题 Benchmark、额度耗尽长跑和实际角色冻结；因此仍不按模型名称指定 Fast/Expert/Racing |
 | M4：资源、安全与跨平台 worker | **代码完成，验收待复核** | 容器生命周期租约、资源限制、安全 profile、Worker Registry、SSH 远程沙箱、附件同步与取消清理均有自动化测试 | 历史记录包含 Mac arm64 和远程 amd64 验收，但临时服务器已不是长期拓扑；比赛前必须在实际 worker 上重跑完整镜像与负载验收 |
 | M5：题目管理、Triage 与动态调度 | **实现中，单题分层可用** | `ChallengeManager` 状态机、持久化、崩溃恢复、显式角色、分层超时和失败升级已接线；单题已支持 Fast→Expert 串行升级，跨阶段复用 `ChallengeMessageBus` 并在 Expert 启动时注入 handoff findings | Triage 仍是确定性启发式；还需 5 题端到端队列、超时升级真实模型验收与资源压测 |
@@ -26,10 +26,11 @@ Hunting Blade 是基于 `ctf-agent` 的二开版本。在同一道题交给多�
 
 当前验证基线：
 
-- CPython 3.14.7 / macOS arm64：基线全量测试 `286 passed, 4 skipped, 1 warning`；真实 Provider 和远程 SSH 沙箱集成测试默认为 opt-in，不计入普通测试成功。
+- CPython 3.14.7 / macOS arm64：基线全量测试 `287 passed, 4 skipped, 1 warning`；真实 Provider 和远程 SSH 沙箱集成测试默认为 opt-in，不计入普通测试成功。
 - 2026-09-28 单题实战：`go-chat/deepseek-v4.1-flash` 在原生 `linux/arm64` Docker 沙箱中约 28.2 秒产出未确认候选，8 次真实 Provider 请求均成功；全程 `--no-submit`，未升级 Expert，未宣称平台确认。
 - 2026-09-28 分层交接实战：把 Fast 超时临时收紧到 8 秒后，程序正确启动 `cpa-responses/gpt-5.6-sol`；Expert trace 在首次模型请求前记录了脱敏 `bump` handoff，并在约 23.6 秒内产出未确认候选。全程 `--no-submit`。
-- 真实 opt-in Provider 验收：OpenCode Go 的 Chat Completions、Anthropic Messages、Responses 各 `1 passed`；CPA 的 GPT Chat、Gemini Chat 与 GPT Responses 各 `1 passed`。所有成功用例均包含真实工具调用往返。
+- 2026-09-28 GPT-6 验收：OpenAI 官方当前 GPT-6 家族为 `gpt-6-astra`、`gpt-6-sol`、`gpt-6-luna`；CPA 实时 `/models` 也返回了这三个精确 ID。三者均已通过 Responses 的“工具调用→结果回传→最终回答”真实闭环；Luna 首次遇到瞬时上游授权 `503`，重试通过。
+- 真实 opt-in Provider 验收：OpenCode Go 的 Chat Completions、Anthropic Messages、Responses 各 `1 passed`；CPA 的 GPT Chat、Gemini Chat、历史 GPT Responses 均通过，GPT-6 Astra/Sol/Luna 的 Responses 也各 `1 passed`。所有成功用例均包含真实工具调用往返。
 - 当前 Mac Docker Desktop 实测为 `linux/arm64`；现有 `ctf-sandbox:arm64` 通过真实挂载、执行、取消与清理集成测试：`1 passed in 2.88s`。
 - 历史 Docker 验收证据保留在 `docs/ARCHITECTURE_AUDIT.md` 和 `docs/CHANGELOG_DEV.md`，但不代表当前比赛拓扑已复验。
 - `ruff check backend tests scripts` 和 `git diff --check` 必须在每个提交前通过。
@@ -258,7 +259,7 @@ OPENCODE_GO_MESSAGES_BASE_URL=https://opencode.ai/zen/go
 
 # 显式角色；模型 ID 必须来自当前 /models，不按名称猜测
 SCHEDULER_FAST_MODELS=go-chat/deepseek-v4.1-flash
-SCHEDULER_EXPERT_MODELS=cpa-responses/gpt-5.6-sol
+SCHEDULER_EXPERT_MODELS=cpa-responses/gpt-6-sol
 SINGLE_CHALLENGE_STRATEGY=tiered
 
 # Lingxu Event CTF
@@ -271,6 +272,8 @@ LINGXU_COOKIE=sessionid=your_session_cookie
 说明：
 
 - `.env` 会自动读取，CLI 参数优先级高于 `.env`。
+- 当前 OpenAI 官方 GPT-6 家族的精确 ID 是 `gpt-6-astra`、`gpt-6-sol`、`gpt-6-luna`。CPA 下用 `cpa-responses/<ID>` 调用；GPT-6 工具调用优先 Responses，不要把 Chat Completions 示例直接套到带 reasoning 的 Sol/Luna 或 Astra 工具流。
+- 上面把 `gpt-6-sol` 作为当前本机 Expert **候选**，不代表 M6 已证明它是最优 Expert；最终角色仍要由历史 CTF Benchmark 冻结。
 - 对 CTFd，优先使用 `CTFD_TOKEN`；账号密码方式只适合你自己额外扩展，不是当前 CLI 主路径。
 - 凌虚竞赛平台，Cookie 里只要 `sessionid` 可用通常就够了；浏览器里没有 `csrftoken` 也属于正常情况。
 - `--coordinator azure` 和 `--models azure/...` 一样，都只读取 `.env` 中的 `AZURE_OPENAI_ENDPOINT` / `AZURE_OPENAI_API_KEY`，不依赖本机 Codex 配置文件。
@@ -500,14 +503,14 @@ uv run ctf-solve \
 - 目录下至少要有 `metadata.yml`。
 - 附件应放在 `distfiles/`。
 
-使用当前已验证的 Fast/Expert 组合进行串行分层解题：
+使用当前本机配置的 Fast/Expert 候选组合进行串行分层解题：
 
 ```bash
 uv run ctf-solve \
   --challenge challenges/example-challenge \
   --single-strategy tiered \
   --models go-chat/deepseek-v4.1-flash \
-  --models cpa-responses/gpt-5.6-sol \
+  --models cpa-responses/gpt-6-sol \
   --coordinator none \
   --no-submit \
   -v

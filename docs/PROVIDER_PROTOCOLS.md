@@ -50,3 +50,29 @@ therefore has separate `cpa-responses` and `cpa-chat` aliases and requires an
 explicit base URL and key. A successful `/models` request is not proof that a
 model supports tools, streaming, or the selected protocol; those are separate
 smoke gates.
+
+### GPT-6 family (checked 2026-09-28)
+
+OpenAI's current official GPT-6 guide and model pages define these exact IDs:
+
+- `gpt-6-astra`
+- `gpt-6-sol`
+- `gpt-6-luna`
+
+All three accept text and image input and have a 1,050,000-token context window.
+Use `cpa-responses/<exact-id>` for solver tool calls. OpenAI documents that Astra
+tool calling requires Responses; Sol and Luna Chat Completions function calling
+requires `reasoning_effort: none`, so the Responses route is the portable solver
+default for this family. The live CPA `/models` directory returned all three IDs
+on the check date. All three then completed a real Responses tool-call, tool-result,
+and final-answer round trip. Luna initially returned `503 auth_unavailable` from
+the CPA upstream authorization pool; an immediate retry completed successfully,
+so operators should treat that error as retryable provider availability rather
+than evidence of a protocol mismatch.
+
+Official sources:
+
+- <https://developers.openai.com/api/docs/guides/latest-model/gpt-6-astra>
+- <https://developers.openai.com/api/docs/models/gpt-6-astra>
+- <https://developers.openai.com/api/docs/models/gpt-6-sol>
+- <https://developers.openai.com/api/docs/models/gpt-6-luna>

@@ -1,5 +1,20 @@
 # Development changelog
 
+## 2026-09-28 — GPT-6 family catalog integration
+
+- Confirmed from OpenAI's current official guide that the GPT-6 family uses the exact IDs
+  `gpt-6-astra`, `gpt-6-sol`, and `gpt-6-luna`, with Responses as the solver-safe tool path.
+- Refreshed the live CPA `/models` directory and observed all three IDs without logging the key
+  or endpoint. Added their official 1,050,000-token context windows and image-input capability
+  to the runtime metadata.
+- Updated the portable configuration example to use `cpa-responses/gpt-6-sol` as an Expert
+  candidate only. Final Fast/Expert/Racing roles remain gated on M6 benchmark evidence.
+- Completed real Responses tool-call, tool-result, and final-answer round trips for Astra, Sol,
+  and Luna (`1 passed` for each model). Luna returned one transient CPA upstream
+  `503 auth_unavailable`; the retry passed without a local adapter change.
+- Verification on CPython 3.14.7/macOS arm64: `287 passed, 4 skipped, 1 warning`;
+  `ruff check backend tests scripts` and `git diff --check` passed.
+
 ## 2026-09-28 — Reproducible Python toolchain and Fast→Expert handoff
 
 - Pinned the development interpreter with `.python-version` at CPython 3.14.7 and documented
