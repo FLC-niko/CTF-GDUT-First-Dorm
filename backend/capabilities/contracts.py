@@ -172,6 +172,11 @@ def build_prompt_fragments(
             fragments.append("**Verify every candidate with `submit_flag '<flag>'`** (bash command) before reporting.")
         else:
             fragments.append("**Verify every candidate with `submit_flag`** before reporting.")
+    if CapabilitySpec.COORDINATION_NOTIFY in capabilities:
+        fragments.append(
+            "After each verified intermediate discovery, call `notify_coordinator` with a concise "
+            "finding, evidence, attempted route, and recommended next step so a later solver tier can continue."
+        )
     if CapabilitySpec.BINARY_ANALYSIS in capabilities:
         fragments.append("Binary: use pyghidra, r2, gdb, angr, capstone when the challenge includes binaries.")
     return tuple(fragments)

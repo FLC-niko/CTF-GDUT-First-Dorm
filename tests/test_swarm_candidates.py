@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 import pytest
 
 from backend.agents.swarm import ChallengeSwarm
+from backend.message_bus import ChallengeMessageBus
 from backend.solver_base import FLAG_CANDIDATE, FLAG_FOUND, SolverResult
 
 
@@ -96,3 +97,59 @@ async def test_cancelling_swarm_cancels_and_waits_for_all_solver_tasks() -> None
 
     assert swarm.cancel_event.is_set()
     assert cancelled == 2
+
+
+@pytest.mark.asyncio
+async def test_new_solver_receives_findings_from_previous_tier() -> None:
+    message_bus = ChallengeMessageBus()
+    await message_bus.post("go-chat/fast", "Verified route: decode the response body first.")
+    bumps: list[str] = []
+
+    class FakeSolver:
+        async def stop(self) -> None:
+            return None
+
+        def bump(self, insights: str) -> None:
+            bumps.append(insights)
+
+    solver = FakeSolver()
+    expected = _result(FLAG_FOUND, "flag{expert}")
+    swarm = object.__new__(ChallengeSwarm)
+    swarm.meta = type("Meta", (), {"name": "handoff"})()
+    swarm.solvers = {}
+    swarm.message_bus = message_bus
+    swarm._create_solver = lambda _model_spec: solver  # type: ignore[method-assign]
+
+    async def fake_run_solver_loop(_solver, _model_spec):
+        return expected, solver
+
+    swarm._run_solver_loop = fake_run_solver_loop  # type: ignore[method-assign]
+
+    result = await swarm._run_solver("cpa-responses/expert")
+
+    assert result is expected
+    assert len(bumps) == 1
+    assert "go-chat/fast" in bumps[0]
+    assert "decode the response body first" in bumps[0]
+
+
+@pytest.mark.asyncio
+async def test_notify_coordinator_publishes_a_tier_handoff_finding() -> None:
+    swarm = object.__new__(ChallengeSwarm)
+    swarm.meta = type("Meta", (), {"name": "handoff"})()
+    swarm.message_bus = ChallengeMessageBus()
+    swarm.coordinator_inbox = asyncio.Queue()
+
+    notify = swarm._make_notify_fn("go-chat/fast")
+    await notify("Verified parameter: source; candidate CTF{notify-canary}")
+
+    findings = await swarm.message_bus.snapshot()
+    assert [(item.model, item.content) for item in findings] == [
+        (
+            "go-chat/fast",
+            "Verified solver finding:\nVerified parameter: source; candidate <redacted-flag>",
+        )
+    ]
+    inbox_message = await swarm.coordinator_inbox.get()
+    assert "Verified parameter: source" in inbox_message
+    assert "notify-canary" not in inbox_message

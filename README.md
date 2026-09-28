@@ -6,10 +6,11 @@ Hunting Blade 是基于 `ctf-agent` 的二开版本。在同一道题交给多�
 2. 默认模型与默认协调器只依赖本机 Codex，不要求 Claude。使用 CPA 或 OpenCode Go 时请显式传入带协议的 `--models`。
 3. `--all-solved-policy` 默认值是 `wait`，所以全题解完后会继续等待新题，不会自动退出。
 4. 默认 `--no-submit`；只有显式传入 `--submit` 才允许向平台提交候选 Flag。
+5. 单题默认保持原有并行 `race` 语义；显式使用 `--single-strategy tiered` 时，程序按 Fast→Expert 串行升级，并把前一阶段有界且脱敏的发现/观察交给后一阶段。
 
 ## 开发阶段与完成情况
 
-> 状态截止 2026-09-22，当前开发分支为 `feat/cpa-go-routing`。阶段验收只记录真实执行过的结果；离线 fake transport 测试不等同于真实 Provider 调用，加速时钟模拟也不等同于四小时实时长跑。
+> 状态截止 2026-09-28，当前开发分支为 `feat/cpa-go-routing`。阶段验收只记录真实执行过的结果；离线 fake transport 测试不等同于真实 Provider 调用，加速时钟模拟也不等同于四小时实时长跑。
 
 | 阶段 | 状态 | 已完成 | 尚未完成 / 验收边界 |
 |------|------|----------|------------------------|
@@ -19,13 +20,15 @@ Hunting Blade 是基于 `ctf-agent` 的二开版本。在同一道题交给多�
 | M2：CPA 模型接入 | **真实协议闭环已验收** | Bearer `/models` 返回 HTTP 200 和 37 个模型；`cpa-chat` 的 GPT、Gemini 以及 `cpa-responses` 的 GPT 均完成“模型调用工具→结果回传→最终回答”真实往返 | 公网端点出现过一次瞬时 TLS 连接失败；旧别名 `gemini-3.1-pro` 已失效，当前有效的 Gemini Chat 验收别名为 `gemini-3.8-flash-high`。历史 CTF 题闭环属于 M6 |
 | M3：OpenCode Go 接入与额度治理 | **真实协议闭环已验收** | 真实 `/models` 返回 33 个模型；`go-chat`、`go-messages`、`go-responses` 三条路径均完成了“模型调用工具→工具结果回传→最终回答”真实往返 | 尚未执行历史 CTF 题 Benchmark、额度耗尽长跑和实际角色冻结；因此仍不按模型名称指定 Fast/Expert/Racing |
 | M4：资源、安全与跨平台 worker | **代码完成，验收待复核** | 容器生命周期租约、资源限制、安全 profile、Worker Registry、SSH 远程沙箱、附件同步与取消清理均有自动化测试 | 历史记录包含 Mac arm64 和远程 amd64 验收，但临时服务器已不是长期拓扑；比赛前必须在实际 worker 上重跑完整镜像与负载验收 |
-| M5：题目管理、Triage 与动态调度 | **实现中** | `ChallengeManager` 状态机、可选原子持久化、崩溃恢复、Fast/Expert/Racing 显式角色配置、分层超时和失败升级已接线；不根据模型名称猜测角色 | Triage 当前仍是确定性启发式，未实现真实 LLM 初评；还需多题端到端调度与真实资源压测 |
+| M5：题目管理、Triage 与动态调度 | **实现中，单题分层可用** | `ChallengeManager` 状态机、持久化、崩溃恢复、显式角色、分层超时和失败升级已接线；单题已支持 Fast→Expert 串行升级，跨阶段复用 `ChallengeMessageBus` 并在 Expert 启动时注入 handoff findings | Triage 仍是确定性启发式；还需 5 题端到端队列、超时升级真实模型验收与资源压测 |
 | M6：历史 CTF Benchmark | **未完成** | 有通用结果数据结构、汇总报告生成器和单元测试 | 原报告是硬编码合成数据，已移除；尚未执行真实历史题、模型对照、多次重复和成本校验，因此不存在可冻结的角色矩阵 |
 | M7：四小时模拟赛与配置冻结 | **未完成** | 有加速的状态恢复和局部故障单测试；`competition_profile.yml` 已改为无设备/无模型硬编码的模板 | 尚未完成四小时实时长跑、完整故障矩阵、实际比赛设备负载验收和最终配置冻结 |
 
 当前验证基线：
 
-- CPython 3.14.7 / macOS arm64：基线全量测试 `280 passed, 4 skipped, 1 warning`；真实 Provider 和远程 SSH 沙箱集成测试默认为 opt-in，不计入普通测试成功。
+- CPython 3.14.7 / macOS arm64：基线全量测试 `286 passed, 4 skipped, 1 warning`；真实 Provider 和远程 SSH 沙箱集成测试默认为 opt-in，不计入普通测试成功。
+- 2026-09-28 单题实战：`go-chat/deepseek-v4.1-flash` 在原生 `linux/arm64` Docker 沙箱中约 28.2 秒产出未确认候选，8 次真实 Provider 请求均成功；全程 `--no-submit`，未升级 Expert，未宣称平台确认。
+- 2026-09-28 分层交接实战：把 Fast 超时临时收紧到 8 秒后，程序正确启动 `cpa-responses/gpt-5.6-sol`；Expert trace 在首次模型请求前记录了脱敏 `bump` handoff，并在约 23.6 秒内产出未确认候选。全程 `--no-submit`。
 - 真实 opt-in Provider 验收：OpenCode Go 的 Chat Completions、Anthropic Messages、Responses 各 `1 passed`；CPA 的 GPT Chat、Gemini Chat 与 GPT Responses 各 `1 passed`。所有成功用例均包含真实工具调用往返。
 - 当前 Mac Docker Desktop 实测为 `linux/arm64`；现有 `ctf-sandbox:arm64` 通过真实挂载、执行、取消与清理集成测试：`1 passed in 2.88s`。
 - 历史 Docker 验收证据保留在 `docs/ARCHITECTURE_AUDIT.md` 和 `docs/CHANGELOG_DEV.md`，但不代表当前比赛拓扑已复验。
@@ -55,6 +58,7 @@ Hunting Blade 是基于 `ctf-agent` 的二开版本。在同一道题交给多�
 | 自动收尾 | 已支持 | `wait` / `exit` / `idle` 三种整场结束策略 |
 | 环境释放 | 已支持 | 平台确认提交成功后，自动释放需要环境的题目 |
 | Writeup 输出 | 已支持 | `off` / `confirmed` / `solved` 三种策略 |
+| Fast→Expert 交接 | 单题已支持 | 显式 `tiered` 模式下顺序运行；已验证发现经共享 message bus 注入 Expert，不改变默认不提交策略 |
 
 ## 上游关系
 
@@ -159,7 +163,7 @@ flowchart TB
 ### 环境要求
 
 - Python `3.14+`
-- `uv`
+- `uv >= 0.12.19`
 - Docker
 - 至少一种平台凭据：CTFd 的 URL 与 Token或凌虚赛事 CTF 的平台根地址、赛事 ID、有效 Cookie
 - 至少一种可用的模型接入方式：本机 `codex`、本机 Claude SDK、或 API 型模型，例如 `azure/...`、`google/...`、`bedrock/...`、`zen/...`
@@ -167,9 +171,13 @@ flowchart TB
 ### 安装依赖
 
 ```bash
-uv sync
+uv --version
+uv python install 3.14.7
+uv sync --python 3.14.7
 docker build -f sandbox/Dockerfile.sandbox -t ctf-sandbox .
 ```
+
+仓库用 `.python-version` 锁定 3.14.7；uv 会在 Windows x64、Intel/Apple Silicon macOS 和 Linux 上选择各自对应的解释器构建，不会把 ARM64 解释器或 Docker 镜像硬编码给其他平台。
 
 Apple Silicon 上可以显式构建已验收的 ARM64 通用题镜像；默认 Ubuntu ports 路由不稳定时可使用可选镜像参数：
 
@@ -196,7 +204,7 @@ uv run ctf-doctor
 uv run ctf-doctor --model cpa-responses/EXACT_MODEL_ID
 ```
 
-doctor 只检查配置是否存在、provider 的显式协议路由、本机 Docker daemon 与沙箱镜像；它不访问 `/models`，不发送推理请求，也不输出 API Key 或完整 endpoint。`cpa-responses`、`cpa-chat`、`go-chat`、`go-messages`、`go-responses` 已有运行时 adapter 和 fake transport 协议回归；当前仓库没有真实凭据，因此真实 CPA/Go 请求仍未验收。
+doctor 只检查配置是否存在、provider 的显式协议路由、本机 Docker daemon 与沙箱镜像；它不访问 `/models`，不发送推理请求，也不输出 API Key 或完整 endpoint。`cpa-responses`、`cpa-chat`、`go-chat`、`go-messages`、`go-responses` 已有运行时 adapter、fake transport 回归和真实工具调用验收；凭据只保存在本机被 Git 忽略的 `.env` 或环境变量中。
 
 真实工具调用 smoke 必须显式 opt-in，并在 `.env` 中准备对应凭据：
 
@@ -247,6 +255,11 @@ OPENCODE_GO_API_KEY=
 OPENCODE_GO_CHAT_BASE_URL=https://opencode.ai/zen/go/v1
 OPENCODE_GO_RESPONSES_BASE_URL=https://opencode.ai/zen/go/v1
 OPENCODE_GO_MESSAGES_BASE_URL=https://opencode.ai/zen/go
+
+# 显式角色；模型 ID 必须来自当前 /models，不按名称猜测
+SCHEDULER_FAST_MODELS=go-chat/deepseek-v4.1-flash
+SCHEDULER_EXPERT_MODELS=cpa-responses/gpt-5.6-sol
+SINGLE_CHALLENGE_STRATEGY=tiered
 
 # Lingxu Event CTF
 PLATFORM=lingxu-event-ctf
@@ -486,6 +499,27 @@ uv run ctf-solve \
 - `--challenge` 传的是本地目录，不是题目名。
 - 目录下至少要有 `metadata.yml`。
 - 附件应放在 `distfiles/`。
+
+使用当前已验证的 Fast/Expert 组合进行串行分层解题：
+
+```bash
+uv run ctf-solve \
+  --challenge challenges/example-challenge \
+  --single-strategy tiered \
+  --models go-chat/deepseek-v4.1-flash \
+  --models cpa-responses/gpt-5.6-sol \
+  --coordinator none \
+  --no-submit \
+  -v
+```
+
+行为边界：
+
+- Fast 找到候选时立即结束，不消耗 Expert 配额。
+- Fast 无结果或超时时启动 Expert。Fast 通过 `notify_coordinator` 上报的发现标记为已验证；程序自动收集的脱敏工具输出标记为未验证观察。两者都会在 Expert 第一轮前注入，避免重复探索。
+- 交接的是有界 findings，不是完整原始对话；各阶段仍使用独立 Docker 沙箱，Fast 写入临时 workspace 的文件不会自动传给 Expert。
+- `--single-strategy race` 保留原行为：所有 `--models` 并行竞速。
+- 无论哪种策略，默认都是 `--no-submit`；候选与平台确认状态分开。
 
 示例目录：
 
@@ -801,9 +835,10 @@ uv run ctf-solve \
 | `--image` | `ctf-sandbox` | Docker 沙箱镜像名 | 你换了镜像名时 |
 | `--models` | 默认模型列表 | 求解模型，可重复传入 | 想控制 solver 组合时；无本地 Codex/Claude 时建议显式传 |
 | `--challenge` | 空 | 本地单题目录 | 只调试单题时 |
+| `--single-strategy` | `race` | 单题策略：`race` 并行，`tiered` 按 Fast→Expert 串行并交接 findings | 想控制 Expert 成本时 |
 | `--challenges-dir` | `challenges` | 题目根目录 | 想改本地题目存放位置时 |
-| `--no-submit` | `false` | 只求解，不提交 flag | 做 dry-run 或本地调试时 |
-| `--coordinator` | `claude` | 顶层协调器后端：`claude`、`codex`、`azure`、`none` | 想切换总控模式时 |
+| `--no-submit` | `true` | 只求解，不提交 flag；只有显式 `--submit` 才会提交 | 默认安全模式 |
+| `--coordinator` | `codex` | 顶层协调器后端：`claude`、`codex`、`azure`、`none` | 想切换总控模式时 |
 | `--coordinator-model` | 后端默认值 | 覆盖顶层协调器模型 | 想手动指定总控模型时 |
 | `--max-challenges` | `10` | 同时处理的题目上限 | 想控并发时 |
 
@@ -893,13 +928,32 @@ solver 容器中的关键挂载点：
 7. 某题解出后，记录结果并根据配置决定是否提交、释放环境、写 writeup。
 8. 根据 `--all-solved-policy` 决定继续等待还是退出。
 
-单题模式下，大致顺序如下：
+单题 `race` 模式下，大致顺序如下：
 
 1. 读取本地 `metadata.yml`
 2. 启动对应题目的 `ChallengeSwarm`
 3. 并发运行多个 solver
 4. 某个 solver 成功后，取消其余 solver
 5. 根据配置决定是否提交、写 writeup、释放环境
+
+单题 `tiered` 模式则为：Fast 单模型执行 → 候选成功则停止 → 无结果/超时则把有界 findings 注入 Expert → Expert 接手。
+
+## 接下来如何推进 M5–M7
+
+1. **M5 收口：多题真实调度**
+   - 准备 5 道本地题，至少覆盖 Web/Crypto/Pwn/Reverse/Misc，用 `--coordinator none` 跑完 Fast→Expert→必要时 Racing。
+   - 验收：并发限制生效；失败/超时自动升级；Expert trace 能看到 `bump`/handoff 事件；重启后状态恢复；无残留容器；默认不提交。
+   - 再增加 LLM Triage，但只输出题型、路线、证据和假设；队列、额度、超时和状态转移继续由程序控制。
+
+2. **M6：真实历史 CTF Benchmark**
+   - 固定一组可重现的历史题，每个候选模型至少重复 3 次，分别测 Fast、Expert 和跨家族 Racing。
+   - 记录有效候选/平台确认、Time-to-Flag、工具调用正确率、token/订阅用量、超时率、失败类型和 Racing 边际覆盖率。
+   - 验收：数据来自真实 trace，不使用合成结果；然后才冻结 Fast/Expert/Racing 角色矩阵。
+
+3. **M7：四小时模拟赛与配置冻结**
+   - 在实际比赛设备上运行四小时墙钟模拟，注入 429、CPA/Go 配额耗尽、断网、Docker 异常退出、Agent 卡死、进程重启和 worker 离线。
+   - Mac/Windows 可运行 ARM64/AMD64 通用题；Pwn/Reverse 另行在原生 x86-64 Linux worker 上验收，不把 Apple Silicon 模拟当作原生 AMD64 证据。
+   - 验收：无凭据/Flag 泄漏、无失控自动提交、能恢复未完成题、资源峰值在设备预算内，最后才写入生产 `competition_profile.yml`。
 
 ## 二开入口
 

@@ -237,6 +237,7 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
             return f"Challenge '{challenge_name}' skipped: {meta.unsupported_reason}"
 
     from backend.agents.swarm import ChallengeSwarm
+    from backend.message_bus import ChallengeMessageBus
 
     models_to_run = list(deps.model_specs)
     timeout_s: int | None = None
@@ -256,6 +257,7 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
         timeout_s = scheduler.get_timeout_s(entry)
         manager.record_solving(challenge_name, models_to_run)
 
+    message_bus = deps.challenge_message_buses.setdefault(challenge_name, ChallengeMessageBus())
     swarm = ChallengeSwarm(
         challenge_dir=deps.challenge_dirs[challenge_name],
         meta=meta,
@@ -266,6 +268,7 @@ async def do_spawn_swarm(deps: CoordinatorDeps, challenge_name: str) -> str:
         no_submit=deps.no_submit,
         coordinator_inbox=deps.coordinator_inbox,
         provider_runtime=deps.provider_runtime,
+        message_bus=message_bus,
     )
     deps.swarms[challenge_name] = swarm
 

@@ -86,7 +86,7 @@
 
 ## M5：调度与恢复
 
-> 进度（2026-09-22）：`ChallengeManager`、可选 `StatePersistence`、启发式 `ChallengeTriager`、显式 Fast/Expert/Racing 角色、分层超时和失败升级已接线。已移除硬编码模型和模型名称启发式，并补充状态隔离、取消和超时回归。LLM triage、本地 5 题端到端队列验收和真实资源竞争仍未完成。
+> 进度（2026-09-28）：`ChallengeManager`、可选 `StatePersistence`、启发式 `ChallengeTriager`、显式 Fast/Expert/Racing 角色、分层超时和失败升级已接线。单题新增显式 `tiered` 策略，Fast 无结果/超时后才启动 Expert，并通过跨阶段 `ChallengeMessageBus` 交接有界 findings。LLM triage、本地 5 题端到端队列验收和真实资源竞争仍未完成。
 
 - 现有 poller/coordinator/policy/working memory 能力优先复用；新增跨题队列与执行状态，不另造整套 Agent 运行时。
 - 题目状态 `pending/triaged/solving/paused/solved/confirmed/failed`；分清候选 Flag 和平台已确认提交。

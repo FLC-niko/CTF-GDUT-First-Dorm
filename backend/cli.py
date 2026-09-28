@@ -16,7 +16,7 @@ from backend.challenge_import import (
     ManualChallengeImportSpec,
     import_manual_challenge,
 )
-from backend.config import AllSolvedPolicy, Settings, WriteupMode
+from backend.config import AllSolvedPolicy, Settings, SingleChallengeStrategy, WriteupMode
 from backend.models import DEFAULT_MODELS
 from backend.platforms import (
     PlatformConfigError,
@@ -75,6 +75,12 @@ def _setup_logging(verbose: bool = False) -> None:
 @click.option("--image", default=None, help="本地 Docker 沙箱镜像；默认读取环境配置")
 @click.option("--models", multiple=True, help="模型规格，可重复传入；默认使用全部已配置模型")
 @click.option("--challenge", default=None, help="只求解单个本地题目目录")
+@click.option(
+    "--single-strategy",
+    default=None,
+    type=click.Choice(["race", "tiered"]),
+    help="单题策略：race 并行所有模型，tiered 按 Fast→Expert 串行升级并交接发现",
+)
 @click.option("--challenges-dir", default="challenges", help="题目根目录")
 @click.option(
     "--no-submit/--submit",
@@ -132,6 +138,7 @@ def main(
     image: str | None,
     models: tuple[str, ...],
     challenge: str | None,
+    single_strategy: SingleChallengeStrategy | None,
     challenges_dir: str,
     no_submit: bool,
     coordinator_model: str | None,
@@ -164,6 +171,8 @@ def main(
         settings_kwargs["writeup_mode"] = writeup_mode
     if writeup_dir is not None:
         settings_kwargs["writeup_dir"] = str(writeup_dir)
+    if single_strategy is not None:
+        settings_kwargs["single_challenge_strategy"] = single_strategy
 
     if (
         all_solved_policy == "idle"
@@ -217,6 +226,8 @@ def main(
     if settings.all_solved_policy == "idle":
         console.print(f"  Idle timeout: {settings.all_solved_idle_seconds} seconds")
     console.print(f"  Writeup mode: {settings.writeup_mode}")
+    if challenge:
+        console.print(f"  Single strategy: {settings.single_challenge_strategy}")
     if settings.writeup_mode != "off":
         console.print(f"  Writeup dir: {settings.writeup_dir}")
     console.print()
@@ -249,8 +260,10 @@ async def _run_single(
     from backend.agents.swarm import ChallengeSwarm
     from backend.cost_tracker import CostTracker
     from backend.deps import CoordinatorDeps
+    from backend.message_bus import ChallengeMessageBus
     from backend.prompts import ChallengeMeta
     from backend.sandbox import cleanup_orphan_containers, configure_semaphore
+    from backend.scheduler import TieredModelConfig
     from backend.solve_lifecycle import finalize_swarm_result
 
     configure_semaphore(settings.max_concurrent_containers)
@@ -279,19 +292,54 @@ async def _run_single(
         max_concurrent_challenges=max_challenges,
     )
 
-    swarm = ChallengeSwarm(
-        challenge_dir=str(challenge_path),
-        meta=meta,
-        ctfd=platform_client,
-        cost_tracker=cost_tracker,
-        settings=settings,
-        model_specs=model_specs,
-        no_submit=no_submit,
-        provider_runtime=deps.provider_runtime,
-    )
-
     try:
-        result = await swarm.run()
+        shared_bus = ChallengeMessageBus()
+        stage_specs: list[tuple[str, list[str], int | None]]
+        if settings.single_challenge_strategy == "tiered":
+            tiered = TieredModelConfig.from_settings(settings, model_specs)
+            stage_specs = [
+                ("Fast", list(tiered.fast_models[:1]), tiered.fast_timeout_s),
+                ("Expert", list(tiered.expert_models[:1]), tiered.expert_timeout_s),
+            ]
+        else:
+            stage_specs = [("Racing", model_specs, None)]
+
+        result = None
+        swarm = None
+        for stage_name, stage_models, timeout_s in stage_specs:
+            if not stage_models:
+                continue
+            console.print(
+                f"[bold]Stage:[/bold] {stage_name} ({', '.join(stage_models)})"
+            )
+            swarm = ChallengeSwarm(
+                challenge_dir=str(challenge_path),
+                meta=meta,
+                ctfd=platform_client,
+                cost_tracker=cost_tracker,
+                settings=settings,
+                model_specs=stage_models,
+                no_submit=no_submit,
+                provider_runtime=deps.provider_runtime,
+                message_bus=shared_bus,
+            )
+            try:
+                if timeout_s is None:
+                    result = await swarm.run()
+                else:
+                    async with asyncio.timeout(timeout_s):
+                        result = await swarm.run()
+            except TimeoutError:
+                swarm.kill()
+                console.print(
+                    f"[yellow]{stage_name} timed out after {timeout_s}s; escalating.[/yellow]"
+                )
+                result = None
+            if result is not None:
+                break
+
+        if swarm is None:
+            raise RuntimeError("No models configured for the selected single-challenge strategy")
         await finalize_swarm_result(
             deps=deps,
             challenge_name=meta.name,

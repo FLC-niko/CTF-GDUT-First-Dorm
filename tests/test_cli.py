@@ -35,6 +35,7 @@ def test_main_help_uses_english_options_with_chinese_help() -> None:
     assert "CTF Agent 多模型题目求解入口。" in result.output
     assert "不传 `--challenge` 时启动完整协调器" in result.output
     assert "--challenge" in result.output
+    assert "--single-strategy" in result.output
     assert "--platform" in result.output
     assert "claude" in result.output
     assert "codex" in result.output
@@ -53,6 +54,10 @@ def test_main_defaults_to_no_platform_submission() -> None:
     no_submit = next(param for param in cli.main.params if param.name == "no_submit")
 
     assert no_submit.default is True
+
+
+def test_main_defaults_single_challenge_strategy_to_race() -> None:
+    assert Settings(_env_file=None).single_challenge_strategy == "race"
 
 
 def test_msg_help_uses_english_options_with_chinese_help() -> None:
@@ -747,6 +752,88 @@ def test_run_single_uses_platform_factory_for_platform_client(monkeypatch, tmp_p
     assert captured["factory_settings"] is settings
     assert captured["semaphore_limit"] == 2
     assert captured["swarm_kwargs"]["ctfd"] is fake_platform
+    assert fake_platform.closed is True
+
+
+def test_run_single_tiered_escalates_and_reuses_findings_bus(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    challenge_dir = tmp_path / "challenge"
+    challenge_dir.mkdir()
+    _write_single_challenge_metadata(challenge_dir, name="handoff-demo")
+    fake_platform = _FakeSingleRunPlatform()
+    stage_models: list[list[str]] = []
+    message_bus_ids: list[int] = []
+    expert_handoff: list[str] = []
+
+    async def fake_cleanup_orphan_containers() -> None:
+        return None
+
+    def fake_configure_semaphore(limit: int) -> None:
+        return None
+
+    class FakeTieredSwarm:
+        def __init__(self, **kwargs: Any) -> None:
+            self.model_specs = kwargs["model_specs"]
+            self.message_bus = kwargs["message_bus"]
+            self.confirmed_submit_status = ""
+            self.confirmed_submit_display = ""
+            self.confirmed_submit_message = ""
+            self.confirmed_flag = None
+            stage_models.append(self.model_specs)
+            message_bus_ids.append(id(self.message_bus))
+
+        async def run(self) -> SolverResult | None:
+            if self.model_specs == ["go-chat/fast"]:
+                await self.message_bus.post(
+                    "go-chat/fast",
+                    "Verified: the response body is encoded; next step is to decode it.",
+                )
+                return None
+            expert_handoff.extend(
+                finding.content for finding in await self.message_bus.snapshot()
+            )
+            return _make_solver_result(
+                flag="flag{tiered}",
+                status=FLAG_FOUND,
+                model_spec="cpa-responses/expert",
+            )
+
+        def kill(self) -> None:
+            return None
+
+    import backend.agents.swarm as swarm_module
+    import backend.sandbox as sandbox_module
+
+    monkeypatch.setattr(cli, "create_platform_client", lambda settings: fake_platform)
+    monkeypatch.setattr(sandbox_module, "cleanup_orphan_containers", fake_cleanup_orphan_containers)
+    monkeypatch.setattr(sandbox_module, "configure_semaphore", fake_configure_semaphore)
+    monkeypatch.setattr(swarm_module, "ChallengeSwarm", FakeTieredSwarm)
+
+    settings = _make_cli_settings(
+        single_challenge_strategy="tiered",
+        scheduler_fast_models="go-chat/fast",
+        scheduler_expert_models="cpa-responses/expert",
+        scheduler_fast_timeout_seconds=1,
+        scheduler_expert_timeout_seconds=1,
+    )
+
+    asyncio.run(
+        cli._run_single(
+            settings=settings,
+            challenge_dir=str(challenge_dir),
+            model_specs=["go-chat/fast", "cpa-responses/expert"],
+            no_submit=True,
+            max_challenges=1,
+        )
+    )
+
+    assert stage_models == [["go-chat/fast"], ["cpa-responses/expert"]]
+    assert len(set(message_bus_ids)) == 1
+    assert expert_handoff == [
+        "Verified: the response body is encoded; next step is to decode it."
+    ]
     assert fake_platform.closed is True
 
 

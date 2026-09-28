@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings
 
 AllSolvedPolicy = Literal["wait", "exit", "idle"]
 WriteupMode = Literal["off", "confirmed", "solved"]
+SingleChallengeStrategy = Literal["race", "tiered"]
 SandboxSecurityProfile = Literal["auto", "standard", "debug", "forensics", "nested"]
 SandboxNetworkMode = Literal["bridge", "none"]
 
@@ -85,6 +86,7 @@ class Settings(BaseSettings):
     all_solved_idle_seconds: int = 300
     writeup_mode: WriteupMode = "off"
     writeup_dir: str = "writeups"
+    single_challenge_strategy: SingleChallengeStrategy = "race"
 
     model_config = {
         "env_file": ".env",

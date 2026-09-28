@@ -1,5 +1,24 @@
 # Development changelog
 
+## 2026-09-28 — Reproducible Python toolchain and Fast→Expert handoff
+
+- Pinned the development interpreter with `.python-version` at CPython 3.14.7 and documented
+  uv 0.12.19+ setup. The local shell now resolves Homebrew uv 0.12.19, and the stale optional
+  OpenClaw completion is guarded outside the repository so a missing file no longer breaks login.
+- Added the opt-in single-challenge `--single-strategy tiered` path. It runs one explicit Fast
+  model first and starts one explicit Expert model only after Fast returns no result or times out.
+- Reused one bounded `ChallengeMessageBus` across tier transitions and coordinator retries.
+  Strategic `notify_coordinator` messages are stored as findings, and a later solver receives the
+  accumulated handoff before its first turn. Redacted tool outputs are captured automatically as
+  explicitly unverified observations, so handoff does not depend only on voluntary model reports.
+  The default `race` behavior remains unchanged.
+- Configured the git-ignored local environment with the currently accepted Fast and Expert IDs;
+  no credential, endpoint, cookie, or flag was added to tracked files.
+- Documented usage, isolation boundaries, and concrete M5–M7 exit criteria in the README.
+- Real tiered acceptance forced an 8-second Fast timeout, automatically started
+  `cpa-responses/gpt-5.6-sol`, recorded a redacted handoff `bump` before Expert's first provider
+  request, and produced an unconfirmed candidate in about 23.6 seconds under `--no-submit`.
+
 ## 2026-09-22 — CPA credential recovery and live GPT/Gemini acceptance
 
 - Replaced the local git-ignored CPA credential; `/models` returned HTTP 200 with 37 models and

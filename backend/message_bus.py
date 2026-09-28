@@ -42,6 +42,11 @@ class ChallengeMessageBus:
             self.cursors[model] = len(self.findings)
             return unread
 
+    async def snapshot(self) -> list[Finding]:
+        """Return the current findings without advancing any solver cursor."""
+        async with self._lock:
+            return list(self.findings)
+
     async def broadcast(self, content: str, source: str = "coordinator") -> None:
         """Coordinator broadcasts a message to all solvers."""
         await self.post(source, content)

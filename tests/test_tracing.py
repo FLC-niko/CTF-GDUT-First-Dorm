@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from backend.agents.solver import _build_handoff_observation
 from backend.tracing import SolverTracer
 
 
@@ -29,3 +30,21 @@ def test_solver_trace_redacts_flags_credentials_and_submit_arguments(tmp_path: P
     assert events[0]["args"] == "<redacted>"
     assert events[2]["flag"] == "<redacted>"
     assert events[2]["token"] == "<redacted>"
+
+
+def test_handoff_observation_is_bounded_labeled_and_redacted() -> None:
+    observation = _build_handoff_observation(
+        "bash",
+        "response CTF{handoff-canary} token sk-handoffsecret " + ("x" * 1200),
+    )
+
+    assert observation.startswith("Unverified tool observation from `bash`:")
+    assert "handoff-canary" not in observation
+    assert "handoffsecret" not in observation
+    assert len(observation) < 900
+
+
+def test_handoff_observation_skips_coordination_and_submission_tools() -> None:
+    assert _build_handoff_observation("notify_coordinator", "message") == ""
+    assert _build_handoff_observation("check_findings", "message") == ""
+    assert _build_handoff_observation("submit_flag", "CTF{candidate}") == ""

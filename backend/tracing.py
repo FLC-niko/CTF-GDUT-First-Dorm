@@ -36,6 +36,11 @@ def _redact_text(value: str) -> str:
     return redacted
 
 
+def redact_sensitive_text(value: str) -> str:
+    """Redact known credentials and flag-shaped values from shared text."""
+    return _redact_text(value)
+
+
 def _redact_value(value, key: str | None = None):
     if key and key.lower() in _SENSITIVE_KEYS:
         return "<redacted>"

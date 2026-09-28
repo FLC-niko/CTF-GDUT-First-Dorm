@@ -25,6 +25,7 @@ from backend.solver_base import (
     SolverProtocol,
     SolverResult,
 )
+from backend.tracing import redact_sensitive_text
 
 if TYPE_CHECKING:
     from backend.config import Settings
@@ -142,8 +143,13 @@ class ChallengeSwarm:
         """Create a callback that pushes solver messages to the coordinator inbox."""
 
         async def _notify(message: str) -> None:
+            safe_message = redact_sensitive_text(message)[:1900]
+            finding = f"Verified solver finding:\n{safe_message}"
+            await self.message_bus.post(model_spec, finding)
             if self.coordinator_inbox:
-                self.coordinator_inbox.put_nowait(f"[{self.meta.name}/{model_spec}] {message}")
+                self.coordinator_inbox.put_nowait(
+                    f"[{self.meta.name}/{model_spec}] {safe_message}"
+                )
 
         return _notify
 
@@ -234,6 +240,9 @@ class ChallengeSwarm:
         self.solvers[model_spec] = solver
 
         try:
+            previous_findings = await self.message_bus.snapshot()
+            if previous_findings:
+                solver.bump(self.message_bus.format_unread(previous_findings))
             result, final_solver = await self._run_solver_loop(solver, model_spec)
             solver = final_solver
             return result

@@ -55,9 +55,21 @@ from backend.solver_base import (
     QUOTA_ERROR,
     SolverResult,
 )
-from backend.tracing import SolverTracer
+from backend.tracing import SolverTracer, redact_sensitive_text
 
 logger = logging.getLogger(__name__)
+
+_HANDOFF_EXCLUDED_TOOLS = {"check_findings", "notify_coordinator", "submit_flag"}
+
+
+def _build_handoff_observation(tool_name: str, result: str) -> str:
+    """Build a bounded, redacted, explicitly unverified cross-tier observation."""
+    if tool_name in _HANDOFF_EXCLUDED_TOOLS:
+        return ""
+    safe_result = redact_sensitive_text(result).strip()
+    if not safe_result:
+        return ""
+    return f"Unverified tool observation from `{tool_name}`:\n{safe_result[:800]}"
 
 
 @asynccontextmanager
@@ -100,6 +112,11 @@ class TracingToolset(WrapperToolset[SolverDeps]):
 
         result_str = str(result) if result is not None else ""
         self.tracer.tool_result(name, result_str, step)
+
+        if ctx.deps.message_bus and ctx.deps.model_spec:
+            observation = _build_handoff_observation(name, result_str)
+            if observation:
+                await ctx.deps.message_bus.post(ctx.deps.model_spec, observation)
 
         # Inject loop warning alongside result on "warn" level
         if loop_status == "warn":

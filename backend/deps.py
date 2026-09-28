@@ -73,6 +73,7 @@ class CoordinatorDeps:
     trace_offsets: dict[str, int] = field(default_factory=dict)
     trace_pending_lines: dict[str, bytes] = field(default_factory=dict)
     trace_file_tokens: dict[str, tuple[int, int]] = field(default_factory=dict)
+    challenge_message_buses: dict[str, ChallengeMessageBus] = field(default_factory=dict)
 
     challenge_manager: Any = None
     scheduler: Any = None
